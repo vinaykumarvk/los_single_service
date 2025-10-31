@@ -17,78 +17,6 @@ interface Application {
   createdAt?: string;
 }
 
-const mockApplications: Record<string, Application> = {
-  '1': {
-    applicationId: 'app-001-rajesh',
-    applicantId: 'cust-rajesh-001',
-    channel: 'WEB',
-    productCode: 'PL001',
-    requestedAmount: 500000,
-    requestedTenureMonths: 36,
-    status: 'Approved',
-    createdAt: '2024-10-25T10:30:00Z',
-  },
-  '2': {
-    applicationId: 'app-002-priya',
-    applicantId: 'cust-priya-002',
-    channel: 'MOBILE',
-    productCode: 'HL001',
-    requestedAmount: 1000000,
-    requestedTenureMonths: 240,
-    status: 'Under Review',
-    createdAt: '2024-10-28T14:20:00Z',
-  },
-  '3': {
-    applicationId: 'app-003-amit',
-    applicantId: 'cust-amit-003',
-    channel: 'BRANCH',
-    productCode: 'BL001',
-    requestedAmount: 200000,
-    requestedTenureMonths: 24,
-    status: 'Submitted',
-    createdAt: '2024-10-29T09:15:00Z',
-  },
-  '4': {
-    applicationId: 'app-004-sneha',
-    applicantId: 'cust-sneha-004',
-    channel: 'WEB',
-    productCode: 'CL001',
-    requestedAmount: 750000,
-    requestedTenureMonths: 60,
-    status: 'Disbursed',
-    createdAt: '2024-10-20T11:45:00Z',
-  },
-  '5': {
-    applicationId: 'app-005-vikram',
-    applicantId: 'cust-vikram-005',
-    channel: 'MOBILE',
-    productCode: 'PL001',
-    requestedAmount: 300000,
-    requestedTenureMonths: 24,
-    status: 'Draft',
-    createdAt: '2024-10-30T16:00:00Z',
-  },
-  '6': {
-    applicationId: 'app-006-anjali',
-    applicantId: 'cust-anjali-006',
-    channel: 'WEB',
-    productCode: 'HL001',
-    requestedAmount: 850000,
-    requestedTenureMonths: 180,
-    status: 'Approved',
-    createdAt: '2024-10-27T13:30:00Z',
-  },
-  '7': {
-    applicationId: 'app-007-rohit',
-    applicantId: 'cust-rohit-007',
-    channel: 'BRANCH',
-    productCode: 'PL001',
-    requestedAmount: 150000,
-    requestedTenureMonths: 12,
-    status: 'Rejected',
-    createdAt: '2024-10-26T10:00:00Z',
-  },
-};
 
 export default function ApplicationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -97,22 +25,36 @@ export default function ApplicationDetail() {
   const [application, setApplication] = useState<Application | null>(
     location.state?.application || null
   );
-  const [loading, setLoading] = useState(!application);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!application && id) {
+    // Always fetch when id changes, even if we have application from state
+    // This ensures we refresh when navigating back from action pages
+    if (id) {
+      setLoading(true);
       api.application
-        .get(`/applications/${id}`)
-        .then((res) => setApplication(res.data))
+        .get(`/${id}`)
+        .then((res) => {
+          // Map API response to UI format
+          const apiApp = res.data;
+          setApplication({
+            applicationId: apiApp.application_id,
+            applicantId: apiApp.applicant_id,
+            channel: apiApp.channel,
+            productCode: apiApp.product_code,
+            requestedAmount: apiApp.requested_amount,
+            requestedTenureMonths: apiApp.requested_tenure_months,
+            status: apiApp.status,
+            createdAt: apiApp.created_at,
+          });
+        })
         .catch((err) => {
           console.error('Failed to load application', err);
-          if (mockApplications[id]) {
-            setApplication(mockApplications[id]);
-          }
+          setApplication(null);
         })
         .finally(() => setLoading(false));
     }
-  }, [id, application]);
+  }, [id]);
 
   const getStatusIcon = (status: string) => {
     if (status === 'Draft') return <Clock className="h-5 w-5 text-yellow-500" />;
@@ -185,31 +127,31 @@ export default function ApplicationDetail() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <Link to={`/applications/${application.applicationId}/documents`}>
+            <Link to={`/applications/${id}/documents`}>
               <Button variant="outline" className="w-full justify-start">
                 <FileText className="mr-2 h-4 w-4" />
                 Manage Documents
               </Button>
             </Link>
-            <Link to={`/applications/${application.applicationId}/underwriting`}>
+            <Link to={`/applications/${id}/underwriting`}>
               <Button variant="outline" className="w-full justify-start">
                 <Scale className="mr-2 h-4 w-4" />
                 Underwriting Review
               </Button>
             </Link>
-            <Link to={`/applications/${application.applicationId}/sanction`}>
+            <Link to={`/applications/${id}/sanction`}>
               <Button variant="outline" className="w-full justify-start">
                 <FileCheck className="mr-2 h-4 w-4" />
                 Sanction & Offer
               </Button>
             </Link>
-            <Link to={`/applications/${application.applicationId}/payments`}>
+            <Link to={`/applications/${id}/payments`}>
               <Button variant="outline" className="w-full justify-start">
                 <CreditCard className="mr-2 h-4 w-4" />
                 Payments
               </Button>
             </Link>
-            <Link to={`/applications/${application.applicationId}/disbursement`}>
+            <Link to={`/applications/${id}/disbursement`}>
               <Button variant="outline" className="w-full justify-start">
                 <Send className="mr-2 h-4 w-4" />
                 Disbursement

@@ -1,0 +1,503 @@
+version: '3.9'
+
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgres:15
+    container_name: los-postgres-prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-los}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-los}
+      POSTGRES_DB: ${POSTGRES_DB:-los}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-los}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    container_name: los-redpanda-prod
+    command:
+      - redpanda start --overprovisioned --smp 1 --memory 1G --reserve-memory 0M --node-id 0 \
+        --check=false --kafka-addr PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092 \
+        --advertise-kafka-addr PLAINTEXT://redpanda:9092,OUTSIDE://localhost:19092
+    ports:
+      - "${KAFKA_PORT:-19092}:19092"
+      - "9644:9644"
+    volumes:
+      - redpanda:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  minio:
+    image: minio/minio:RELEASE.2024-09-22T00-33-43Z
+    container_name: los-minio-prod
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: los-keycloak-prod
+    command: start --http-port=8080 --hostname-strict=false
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-los}
+      KC_DB_USERNAME: ${POSTGRES_USER:-los}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-los}
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  # API Gateway
+  gateway:
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    container_name: los-gateway-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-http://keycloak:8080/realms/los}
+      KEYCLOAK_JWKS_URI: ${KEYCLOAK_JWKS_URI:-http://keycloak:8080/realms/los/protocol/openid-connect/certs}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-los-ui}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    depends_on:
+      - postgres
+      - keycloak
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  # Core Services
+  application:
+    build:
+      context: ..
+      dockerfile: services/application/Dockerfile
+    container_name: los-application-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${APPLICATION_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  customer-kyc:
+    build:
+      context: ..
+      dockerfile: services/customer-kyc/Dockerfile
+    container_name: los-customer-kyc-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${KYC_PORT:-3002}:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  document:
+    build:
+      context: ..
+      dockerfile: services/document/Dockerfile
+    container_name: los-document-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${DOCUMENT_PORT:-3003}:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  masters:
+    build:
+      context: ..
+      dockerfile: services/masters/Dockerfile
+    container_name: los-masters-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+    ports:
+      - "${MASTERS_PORT:-3004}:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  underwriting:
+    build:
+      context: ..
+      dockerfile: services/underwriting/Dockerfile
+    container_name: los-underwriting-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3006
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+    ports:
+      - "${UNDERWRITING_PORT:-3006}:3006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  sanction-offer:
+    build:
+      context: ..
+      dockerfile: services/sanction-offer/Dockerfile
+    container_name: los-sanction-offer-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${SANCTION_PORT:-3007}:3007"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  payments:
+    build:
+      context: ..
+      dockerfile: services/payments/Dockerfile
+    container_name: los-payments-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3008
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${PAYMENTS_PORT:-3008}:3008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  disbursement:
+    build:
+      context: ..
+      dockerfile: services/disbursement/Dockerfile
+    container_name: los-disbursement-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3009
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${DISBURSEMENT_PORT:-3009}:3009"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3009/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: services/orchestrator/Dockerfile
+    container_name: los-orchestrator-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${ORCHESTRATOR_PORT:-3010}:3010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  notifications:
+    build:
+      context: ..
+      dockerfile: services/notifications/Dockerfile
+    container_name: los-notifications-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3011
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+    ports:
+      - "${NOTIFICATIONS_PORT:-3011}:3011"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  audit:
+    build:
+      context: ..
+      dockerfile: services/audit/Dockerfile
+    container_name: los-audit-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3012
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+    ports:
+      - "${AUDIT_PORT:-3012}:3012"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3012/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  bureau:
+    build:
+      context: ..
+      dockerfile: services/bureau/Dockerfile
+    container_name: los-bureau-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3013
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${BUREAU_PORT:-3013}:3013"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3013/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  verification:
+    build:
+      context: ..
+      dockerfile: services/verification/Dockerfile
+    container_name: los-verification-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3014
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+    ports:
+      - "${VERIFICATION_PORT:-3014}:3014"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3014/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  reporting:
+    build:
+      context: ..
+      dockerfile: reporting/Dockerfile
+    container_name: los-reporting-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3015
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+    ports:
+      - "${REPORTING_PORT:-3015}:3015"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3015/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  integration-hub:
+    build:
+      context: ..
+      dockerfile: services/integration-hub/Dockerfile
+    container_name: los-integration-hub-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3020
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-default-webhook-secret-change-in-production}
+    ports:
+      - "${INTEGRATION_HUB_PORT:-3020}:3020"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3020/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+volumes:
+  pgdata:
+  redpanda:
+  minio:
+
+networks:
+  los-network:
+    driver: bridge
+

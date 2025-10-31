@@ -33,7 +33,7 @@ app.post('/api/bureau/pull', async (req, res) => {
   setTimeout(() => {
     const mockScore = Math.floor(Math.random() * 300) + 650; // 650-950 range
     const mockReport = {
-      score,
+      score: mockScore,
       creditHistory: { totalAccounts: 5, activeAccounts: 3, delinquentAccounts: 0 },
       recentEnquiries: 2
     };

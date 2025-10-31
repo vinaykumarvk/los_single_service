@@ -33,7 +33,30 @@ export { runOutboxPublisher, logPublish, createKafkaPublish, createKafkaClientIf
 export { correlationIdMiddleware, createLogger } from './logger';
 export { startSpan } from './tracing';
 export { maskPAN, maskAadhaar, redactPII } from './masking';
+export { 
+  encryptField, decryptField, 
+  encryptPAN, decryptPAN, 
+  encryptAadhaar, decryptAadhaar, 
+  encryptEmail, decryptEmail,
+  encryptMobile, decryptMobile,
+  encryptAddress, decryptAddress,
+  isEncrypted 
+} from './encryption';
 export { createS3Client, putObjectBuffer, getPresignedUrl } from './s3';
 export { metricsMiddleware, metricsHandler } from './metrics';
+export { verifySignature, signPayload } from './webhook';
+export { getSecret, getSecrets, clearSecretCache } from './secrets';
+export { checkBlacklistWhitelist, addToBlacklist, addToWhitelist } from './blacklist';
+export { 
+  CircuitBreaker, 
+  CircuitBreakerOpenError, 
+  getCircuitBreaker,
+  CircuitState 
+} from './circuit-breaker';
+export { 
+  retry, 
+  withRetry, 
+  RetryableError 
+} from './retry';
 
 

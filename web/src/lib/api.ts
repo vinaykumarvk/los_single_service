@@ -10,6 +10,7 @@ const API_BASE = import.meta.env.VITE_API_GATEWAY
       sanction: import.meta.env.VITE_API_SANCTION || 'http://localhost:3007/api',
       payments: import.meta.env.VITE_API_PAYMENTS || 'http://localhost:3008/api',
       disbursement: import.meta.env.VITE_API_DISBURSEMENT || 'http://localhost:3009/api',
+      reporting: import.meta.env.VITE_API_REPORTING || 'http://localhost:3015/api',
     };
 
 function getClient(base: string) {
@@ -40,6 +41,7 @@ const api = typeof API_BASE === 'string'
       sanction: getClient(`${API_BASE}/applications`),
       payments: getClient(`${API_BASE}/applications`),
       disbursement: getClient(`${API_BASE}/applications`),
+      reporting: getClient(`${API_BASE}/reporting`),
     }
   : {
       application: getClient(`${API_BASE.application}/applications`),
@@ -49,6 +51,7 @@ const api = typeof API_BASE === 'string'
       sanction: getClient(`${API_BASE.sanction}/applications`),
       payments: getClient(`${API_BASE.payments}/applications`),
       disbursement: getClient(`${API_BASE.disbursement}/applications`),
+      reporting: getClient(`${API_BASE.reporting}/reporting`),
     };
 
 export default api;

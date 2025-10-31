@@ -16,7 +16,7 @@ interface Document {
 }
 
 export default function DocumentUpload() {
-  const { applicationId } = useParams<{ applicationId: string }>();
+  const { id: applicationId } = useParams<{ id: string }>();
   const [docType, setDocType] = useState('PAN');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);

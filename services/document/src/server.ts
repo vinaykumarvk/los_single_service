@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { createPgPool, correlationIdMiddleware, createLogger, createS3Client, putObjectBuffer, getPresignedUrl } from '@los/shared-libs';
 import crypto from 'crypto';
+import { extractDocumentMetadata } from './ocr';
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }); // 15MB max
@@ -39,10 +40,33 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
   try {
     await client.query('BEGIN');
     
-    // Persist document metadata
+    // Extract OCR metadata (non-blocking, but await for transaction)
+    let extractedData = null;
+    let ocrProvider = null;
+    let ocrConfidence = null;
+    try {
+      const metadata = await extractDocumentMetadata(req.file.buffer, req.file.mimetype, req.body.docType);
+      extractedData = metadata;
+      ocrProvider = process.env.OCR_PROVIDER || 'mock';
+      ocrConfidence = metadata.confidence || null;
+    } catch (ocrErr) {
+      logger.warn('OCRFailed', { error: (ocrErr as Error).message, docId, docType: req.body.docType });
+      // Continue without OCR data
+    }
+    
+    // Check if this is a re-upload (document versioning)
+    const existingDoc = await client.query(
+      'SELECT doc_id, version FROM documents WHERE application_id = $1 AND doc_type = $2 ORDER BY version DESC LIMIT 1',
+      [req.params.id, req.body.docType]
+    );
+    
+    const version = existingDoc.rows.length > 0 ? existingDoc.rows[0].version + 1 : 1;
+    const previousVersionId = existingDoc.rows.length > 0 ? existingDoc.rows[0].doc_id : null;
+    
+    // Persist document metadata with OCR data and versioning
     await client.query(
-      'INSERT INTO documents (doc_id, application_id, doc_type, file_name, file_type, size_bytes, hash, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [docId, req.params.id, req.body.docType, req.file.originalname, req.file.mimetype, req.file.size, fileHash, 'Uploaded']
+      'INSERT INTO documents (doc_id, application_id, doc_type, file_name, file_type, size_bytes, hash, status, extracted_data, ocr_provider, ocr_confidence, version, previous_version_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
+      [docId, req.params.id, req.body.docType, req.file.originalname, req.file.mimetype, req.file.size, fileHash, 'Uploaded', extractedData ? JSON.stringify(extractedData) : null, ocrProvider, ocrConfidence, version, previousVersionId]
     );
 
     // Upload to MinIO (outside transaction but awaited before event)
@@ -114,6 +138,32 @@ app.patch('/api/documents/:docId/verify', async (req, res) => {
   }
 });
 
+// GET /api/applications/:id/checklist - get document checklist for application's product
+app.get('/api/applications/:id/checklist', async (req, res) => {
+  try {
+    // Get product code from application
+    const appResult = await pool.query(
+      'SELECT product_code FROM applications WHERE application_id = $1',
+      [req.params.id]
+    );
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    const productCode = appResult.rows[0].product_code;
+
+    // Get checklist for this product
+    const { rows } = await pool.query(
+      'SELECT doc_type, required FROM document_checklist WHERE product_code = $1 ORDER BY doc_type',
+      [productCode]
+    );
+
+    return res.status(200).json({ productCode, checklist: rows });
+  } catch (err) {
+    logger.error('GetChecklistError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to get checklist' });
+  }
+});
+
 // GET /api/applications/:id/documents - list documents
 app.get('/api/applications/:id/documents', async (req, res) => {
   try {
@@ -125,6 +175,68 @@ app.get('/api/applications/:id/documents', async (req, res) => {
   } catch (err) {
     logger.error('ListDocumentsError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to list documents' });
+  }
+});
+
+// GET /api/applications/:id/documents/compliance - check document compliance against checklist
+app.get('/api/applications/:id/documents/compliance', async (req, res) => {
+  try {
+    // Get product code from application
+    const appResult = await pool.query(
+      'SELECT product_code FROM applications WHERE application_id = $1',
+      [req.params.id]
+    );
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    const productCode = appResult.rows[0].product_code;
+
+    // Get checklist for this product
+    const checklistResult = await pool.query(
+      'SELECT doc_type, required FROM document_checklist WHERE product_code = $1',
+      [productCode]
+    );
+    const checklist = checklistResult.rows.reduce((acc: Record<string, boolean>, row: any) => {
+      acc[row.doc_type] = row.required;
+      return acc;
+    }, {});
+
+    // Get uploaded documents
+    const docsResult = await pool.query(
+      'SELECT doc_type, status FROM documents WHERE application_id = $1',
+      [req.params.id]
+    );
+    const uploaded = docsResult.rows.map((r: any) => r.doc_type);
+
+    // Check compliance
+    const missing: string[] = [];
+    const uploadedSet = new Set(uploaded);
+
+    for (const [docType, required] of Object.entries(checklist)) {
+      if (required && !uploadedSet.has(docType)) {
+        missing.push(docType);
+      }
+    }
+
+    // Check if all required are verified
+    const verified = docsResult.rows.filter((r: any) => r.status === 'Verified').length;
+    const requiredCount = Object.values(checklist).filter((r: boolean) => r).length;
+
+    const isCompliant = missing.length === 0 && verified >= requiredCount;
+
+    return res.status(200).json({
+      productCode,
+      isCompliant,
+      checklist,
+      uploaded,
+      missing,
+      verified,
+      requiredCount,
+      totalUploaded: docsResult.rows.length
+    });
+  } catch (err) {
+    logger.error('CheckComplianceError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to check compliance' });
   }
 });
 

@@ -12,14 +12,17 @@
     "reporting"
   ],
   "devDependencies": {
-    "vitest": "^1.6.0",
-    "@types/node": "^20.11.30"
+    "@types/node": "^20.11.30",
+    "@vitest/coverage-v8": "^1.6.1",
+    "vitest": "^1.6.1"
   },
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm -r --parallel run dev",
     "lint": "pnpm -r run lint",
-    "test": "pnpm -r --parallel run test"
+    "test": "pnpm -r --parallel run test",
+    "test:e2e": "cd e2e && pnpm test",
+    "test:e2e:ui": "cd e2e && pnpm test:ui",
+    "test:e2e:install": "cd e2e && pnpm test:install"
   }
 }
-

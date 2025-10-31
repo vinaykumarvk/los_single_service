@@ -1,0 +1,11 @@
+# GCP-specific ignore files
+.env
+*.key
+*.json
+credentials.json
+service-account*.json
+
+# Local test files
+test-*.sh
+local-*.sh
+

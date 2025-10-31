@@ -5,19 +5,23 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "migrate": "ts-node --transpile-only ../../shared/libs/src/migrate.ts ./migrations",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@los/shared-libs": "workspace:*",
     "express": "^4.19.2",
-    "zod": "^3.23.8",
-    "uuid": "^9.0.1",
     "pg": "^8.12.0",
-    "@los/shared-libs": "workspace:*"
+    "uuid": "^9.0.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^1.6.1",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^1.6.1"
   }
 }
-

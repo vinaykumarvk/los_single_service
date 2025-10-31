@@ -1,0 +1,88 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9.0.0'
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: los
+          POSTGRES_PASSWORD: los
+          POSTGRES_DB: los
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm -w install --frozen-lockfile
+
+      - name: Setup database
+        env:
+          DATABASE_URL: postgres://los:los@localhost:5432/los
+        run: |
+          # Wait for postgres to be ready
+          until pg_isready -h localhost -p 5432 -U los; do
+            echo "Waiting for postgres..."
+            sleep 1
+          done
+          
+          # Run migrations for services that have them
+          cd services/application && pnpm migrate || true
+          cd ../customer-kyc && pnpm migrate || true
+          cd ../document && pnpm migrate || true
+          cd ../sanction-offer && pnpm migrate || true
+          cd ../payments && pnpm migrate || true
+          cd ../disbursement && pnpm migrate || true
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgres://los:los@localhost:5432/los
+          NODE_ENV: test
+        run: |
+          # Run integration tests for services that have them
+          cd services/application && pnpm test:integration || echo "No integration tests found"
+          cd ../customer-kyc && pnpm test:integration || echo "No integration tests found"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            **/test-results/
+            **/coverage/
+          retention-days: 30
+

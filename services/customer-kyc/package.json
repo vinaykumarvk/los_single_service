@@ -6,7 +6,10 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "migrate": "ts-node --transpile-only ../../shared/libs/src/migrate.ts ./migrations",
     "build": "tsc -p tsconfig.json",
-    "outbox:dev": "ts-node-dev --respawn --transpile-only src/publisher.ts"
+    "outbox:dev": "ts-node-dev --respawn --transpile-only src/publisher.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -18,7 +21,11 @@
   "devDependencies": {
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^1.6.1",
+    "@vitest/coverage-v8": "^1.6.1",
+    "supertest": "^7.1.4",
+    "@types/supertest": "^6.0.3"
   }
 }
 

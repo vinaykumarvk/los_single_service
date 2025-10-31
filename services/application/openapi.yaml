@@ -4,6 +4,61 @@ info:
   version: 0.1.0
 paths:
   /api/applications:
+    get:
+      summary: List applications with filters and pagination
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1, minimum: 1 }
+          description: Page number
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+          description: Items per page
+        - in: query
+          name: status
+          schema: { type: string }
+          description: Filter by status
+        - in: query
+          name: channel
+          schema: { type: string, enum: [Branch, DSA, Online, Mobile] }
+          description: Filter by channel
+        - in: query
+          name: productCode
+          schema: { type: string }
+          description: Filter by product code
+        - in: query
+          name: applicantId
+          schema: { type: string, format: uuid }
+          description: Filter by applicant ID
+        - in: query
+          name: minAmount
+          schema: { type: number }
+          description: Minimum requested amount
+        - in: query
+          name: maxAmount
+          schema: { type: number }
+          description: Maximum requested amount
+      responses:
+        '200':
+          description: List of applications with pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Application'
+                  pagination:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      limit: { type: integer }
+                      total: { type: integer }
+                      totalPages: { type: integer }
+                      hasMore: { type: boolean }
     post:
       summary: Create application
       requestBody:
@@ -28,6 +83,20 @@ paths:
       responses:
         '201':
           description: Created
+components:
+  schemas:
+    Application:
+      type: object
+      properties:
+        application_id: { type: string, format: uuid }
+        applicant_id: { type: string, format: uuid }
+        channel: { type: string, enum: [Branch, DSA, Online, Mobile] }
+        product_code: { type: string }
+        requested_amount: { type: number }
+        requested_tenure_months: { type: integer }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
   /api/applications/{id}:
     get:
       summary: Get application by id
@@ -38,6 +107,34 @@ paths:
           schema: { type: string }
       responses:
         '200': { description: OK }
+    patch:
+      summary: Update application (only when status is Draft)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                  enum: [Branch, DSA, Online, Mobile]
+                productCode:
+                  type: string
+                requestedAmount:
+                  type: number
+                requestedTenureMonths:
+                  type: integer
+      responses:
+        '200':
+          description: Updated
+        '400':
+          description: Bad request (application not in Draft status or invalid data)
   /api/applications/{id}/submit:
     post:
       summary: Submit application
@@ -48,4 +145,40 @@ paths:
           schema: { type: string }
       responses:
         '202': { description: Submitted }
+  /api/applications/{id}/timeline:
+    get:
+      summary: Get complete application history/timeline
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Application timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applicationId: { type: string, format: uuid }
+                  timeline:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        history_id: { type: string, format: uuid }
+                        event_type: { type: string }
+                        event_source: { type: string }
+                        event_data: { type: object }
+                        actor_id: { type: string }
+                        occurred_at: { type: string, format: date-time }
+                  timelineByDate: { type: object }
+                  summary:
+                    type: object
+                    properties:
+                      totalEvents: { type: integer }
+                      eventsBySource: { type: object }
+                      firstEvent: { type: string, format: date-time }
+                      lastEvent: { type: string, format: date-time }
 

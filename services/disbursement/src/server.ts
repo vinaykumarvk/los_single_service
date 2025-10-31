@@ -15,7 +15,8 @@ app.get('/health', (_req, res) => res.status(200).send('OK'));
 const ReqSchema = z.object({
   amount: z.number().min(1),
   beneficiaryAccount: z.string().min(6),
-  ifsc: z.string().min(4)
+  ifsc: z.string().min(4),
+  scheduledAt: z.string().datetime().optional() // ISO 8601 date-time for future disbursement
 });
 
 // POST /api/applications/:id/disburse - idempotent by Idempotency-Key header
@@ -47,10 +48,14 @@ app.post('/api/applications/:id/disburse', async (req, res) => {
 
     const disbursementId = uuidv4();
     
-    // Persist disbursement
+    // Check if scheduled for future
+    const scheduledAt = parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null;
+    const status = scheduledAt && scheduledAt > new Date() ? 'SCHEDULED' : 'REQUESTED';
+    
+    // Persist disbursement with scheduling
     await client.query(
-      'INSERT INTO disbursements (disbursement_id, application_id, amount, beneficiary_account, ifsc, idempotency_key, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [disbursementId, req.params.id, parsed.data.amount, parsed.data.beneficiaryAccount, parsed.data.ifsc, idemp, 'REQUESTED']
+      'INSERT INTO disbursements (disbursement_id, application_id, amount, beneficiary_account, ifsc, idempotency_key, status, scheduled_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [disbursementId, req.params.id, parsed.data.amount, parsed.data.beneficiaryAccount, parsed.data.ifsc, idemp, status, scheduledAt]
     );
 
     // Write outbox event
@@ -61,8 +66,12 @@ app.post('/api/applications/:id/disburse', async (req, res) => {
     );
 
     await client.query('COMMIT');
-    logger.info('DisbursementRequested', { correlationId: (req as any).correlationId, applicationId: req.params.id, disbursementId });
-    return res.status(202).json({ disbursementId, status: 'REQUESTED' });
+    logger.info('DisbursementRequested', { correlationId: (req as any).correlationId, applicationId: req.params.id, disbursementId, status });
+    return res.status(202).json({ 
+      disbursementId, 
+      status,
+      scheduledAt: scheduledAt?.toISOString() || null
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error('DisbursementRequestError', { error: (err as Error).message, correlationId: (req as any).correlationId });
@@ -111,6 +120,27 @@ app.post('/webhooks/cbs', async (req, res) => {
     return res.status(500).json({ error: 'Failed to reconcile disbursement' });
   } finally {
     client.release();
+  }
+});
+
+// GET /api/disbursements/scheduled - get scheduled disbursements
+app.get('/api/disbursements/scheduled', async (req, res) => {
+  try {
+    const date = req.query.date ? new Date(req.query.date as string) : new Date();
+    
+    const { rows } = await pool.query(
+      `SELECT disbursement_id, application_id, amount, beneficiary_account, ifsc, scheduled_at, status
+       FROM disbursements
+       WHERE status = 'SCHEDULED' AND scheduled_at <= $1
+       ORDER BY scheduled_at ASC
+       LIMIT 100`,
+      [date]
+    );
+    
+    return res.status(200).json({ scheduledDisbursements: rows, count: rows.length });
+  } catch (err) {
+    logger.error('GetScheduledDisbursementsError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to fetch scheduled disbursements' });
   }
 });
 

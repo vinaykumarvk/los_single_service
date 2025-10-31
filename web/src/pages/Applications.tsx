@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -8,6 +8,7 @@ import DataTable, { Column } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 import { ConfirmModal } from '../components/ui/Modal';
 import { Plus, Search, Filter, Download, Trash2, CheckCircle, XCircle, MoreVertical } from 'lucide-react';
+import api from '../lib/api';
 
 interface Application {
   id: string;
@@ -18,6 +19,18 @@ interface Application {
   createdAt: string;
 }
 
+interface ApplicationAPIResponse {
+  application_id: string;
+  applicant_id: string;
+  channel: string;
+  product_code: string;
+  requested_amount: number;
+  requested_tenure_months: number;
+  status: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 export default function Applications() {
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -26,72 +39,91 @@ export default function Applications() {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
 
-  const mockApplications: Application[] = [
-    {
-      id: '1',
-      customerName: 'Rajesh Kumar',
-      loanAmount: 500000,
-      productType: 'Personal Loan',
-      status: 'approved',
-      createdAt: '2024-10-25',
-    },
-    {
-      id: '2',
-      customerName: 'Priya Sharma',
-      loanAmount: 1000000,
-      productType: 'Home Loan',
-      status: 'under_review',
-      createdAt: '2024-10-28',
-    },
-    {
-      id: '3',
-      customerName: 'Amit Patel',
-      loanAmount: 200000,
-      productType: 'Business Loan',
-      status: 'submitted',
-      createdAt: '2024-10-29',
-    },
-    {
-      id: '4',
-      customerName: 'Sneha Reddy',
-      loanAmount: 750000,
-      productType: 'Car Loan',
-      status: 'disbursed',
-      createdAt: '2024-10-20',
-    },
-    {
-      id: '5',
-      customerName: 'Vikram Singh',
-      loanAmount: 300000,
-      productType: 'Personal Loan',
-      status: 'draft',
-      createdAt: '2024-10-30',
-    },
-    {
-      id: '6',
-      customerName: 'Anjali Gupta',
-      loanAmount: 850000,
-      productType: 'Home Loan',
-      status: 'approved',
-      createdAt: '2024-10-27',
-    },
-    {
-      id: '7',
-      customerName: 'Rohit Verma',
-      loanAmount: 150000,
-      productType: 'Personal Loan',
-      status: 'rejected',
-      createdAt: '2024-10-26',
-    },
-  ];
+  // Map API response to UI format
+  const mapApplication = (apiApp: ApplicationAPIResponse): Application => {
+    // Normalize status to match UI expectations
+    const normalizedStatus = apiApp.status.toLowerCase().replace(' ', '_') as Application['status'];
+    
+    return {
+      id: apiApp.application_id,
+      customerName: apiApp.applicant_id.slice(0, 12) + '...', // Use applicant ID as placeholder for customer name
+      loanAmount: apiApp.requested_amount,
+      productType: apiApp.product_code || 'Unknown',
+      status: normalizedStatus,
+      createdAt: apiApp.created_at ? new Date(apiApp.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    };
+  };
 
-  const filteredApplications = mockApplications.filter((app) => {
-    const matchesSearch = app.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.id.includes(searchQuery);
-    const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Fetch applications from API
+  const fetchApplications = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params: Record<string, string> = {
+        page: pagination.page.toString(),
+        limit: pagination.limit.toString(),
+      };
+      
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+
+      const response = await api.application.get('/', { params });
+      const apiApps: ApplicationAPIResponse[] = response.data.applications || [];
+      const mappedApps = apiApps.map(mapApplication);
+      
+      // Apply client-side search filter if needed
+      let filtered = mappedApps;
+      if (searchQuery) {
+        filtered = mappedApps.filter((app) => 
+          app.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          app.id.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      
+      setApplications(filtered);
+      
+      if (response.data.pagination) {
+        setPagination({
+          page: response.data.pagination.page || 1,
+          limit: response.data.pagination.limit || 20,
+          total: response.data.pagination.total || 0,
+          totalPages: response.data.pagination.totalPages || 1,
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch applications', err);
+      setError(err.response?.data?.error || err.message || 'Failed to load applications');
+      addToast({
+        type: 'error',
+        message: 'Failed to load applications',
+        description: err.response?.data?.error || err.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchApplications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, pagination.page, pagination.limit]);
+
+  // Re-fetch when search query changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchApplications();
+    }, 300);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  const filteredApplications = applications;
 
   const getStatusBadge = (status: Application['status']) => {
     const variants: Record<Application['status'], 'default' | 'primary' | 'success' | 'warning' | 'error' | 'secondary'> = {
@@ -314,7 +346,18 @@ export default function Applications() {
         </Card>
       )}
 
-      {filteredApplications.length === 0 ? (
+      {loading ? (
+        <Card>
+          <div className="text-center py-12 text-secondary-600 dark:text-secondary-400">Loading applications...</div>
+        </Card>
+      ) : error ? (
+        <Card>
+          <div className="text-center py-12">
+            <div className="text-error-600 dark:text-error-400 mb-4">{error}</div>
+            <Button onClick={fetchApplications}>Retry</Button>
+          </div>
+        </Card>
+      ) : filteredApplications.length === 0 ? (
         <Card>
           <EmptyState
             icon="search"
@@ -346,15 +389,42 @@ export default function Applications() {
           />
         </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={filteredApplications}
-          keyExtractor={(app) => app.id}
-          onRowClick={(app) => navigate(`/applications/${app.id}`)}
-          selectable
-          selectedRows={selectedRows}
-          onSelectionChange={setSelectedRows}
-        />
+        <>
+          <DataTable
+            columns={columns}
+            data={filteredApplications}
+            keyExtractor={(app) => app.id}
+            onRowClick={(app) => navigate(`/applications/${app.id}`)}
+            selectable
+            selectedRows={selectedRows}
+            onSelectionChange={setSelectedRows}
+          />
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-secondary-600 dark:text-secondary-400">
+                Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} applications
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page === 1}
+                  onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <ConfirmModal

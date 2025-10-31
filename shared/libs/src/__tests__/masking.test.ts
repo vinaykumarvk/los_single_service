@@ -3,7 +3,8 @@ import { maskPAN, maskAadhaar, redactPII } from '../masking';
 
 describe('masking utils', () => {
   it('masks PAN retaining first 2 and last 4 characters', () => {
-    expect(maskPAN('ABCDE1234F')).toBe('ABXXXX34F');
+    // PAN: ABCDE1234F (10 chars) -> AB + XXXX + 234F = ABXXXX234F
+    expect(maskPAN('ABCDE1234F')).toBe('ABXXXX234F');
   });
 
   it('masks Aadhaar retaining first 2 and last 2 digits', () => {

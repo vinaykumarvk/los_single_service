@@ -37,7 +37,7 @@ function AppContent() {
                   <Route path="/applications" element={<Applications />} />
                   <Route path="/applications/new" element={<ApplicationNew />} />
                   <Route path="/applications/:id" element={<ApplicationDetail />} />
-                  <Route path="/applications/:applicationId/documents" element={<DocumentUpload />} />
+                  <Route path="/applications/:id/documents" element={<DocumentUpload />} />
                   <Route path="/applications/:id/underwriting" element={<Underwriting />} />
                   <Route path="/applications/:id/sanction" element={<SanctionOffer />} />
                   <Route path="/applications/:id/payments" element={<Payments />} />
