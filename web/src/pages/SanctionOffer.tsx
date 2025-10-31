@@ -97,9 +97,9 @@ export default function SanctionOffer() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Sanction & Offer Management</h1>
-      {applicationId && <p className="text-gray-600">Application ID: {applicationId}</p>}
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Sanction & Offer Management</h1>
+      {applicationId && <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400">Application ID: {applicationId}</p>}
 
       {!sanction && (
         <Card>
@@ -129,8 +129,8 @@ export default function SanctionOffer() {
                   error={sanctionErrors.rateAnnual?.message}
                 />
               </div>
-              {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>}
-              {message && <div className="text-sm text-green-700 bg-green-50 p-3 rounded">{message}</div>}
+              {error && <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>}
+              {message && <div className="text-sm text-success-700 dark:text-success-400 bg-success-50 dark:bg-success-900/20 p-3 rounded">{message}</div>}
               <Button disabled={loading || !applicationId} type="submit">
                 <FileCheck className="mr-2 h-4 w-4" />
                 {loading ? 'Issuing...' : 'Issue Sanction'}
@@ -155,27 +155,27 @@ export default function SanctionOffer() {
             <CardContent>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <p className="text-sm text-gray-500">Sanction ID</p>
-                  <p className="text-lg font-semibold">{sanction.sanctionId.slice(0, 8)}...</p>
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">Sanction ID</p>
+                  <p className="text-lg font-semibold text-secondary-900 dark:text-secondary-100">{sanction.sanctionId.slice(0, 8)}...</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Sanctioned Amount</p>
-                  <p className="text-lg font-semibold">
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">Sanctioned Amount</p>
+                  <p className="text-lg font-semibold text-secondary-900 dark:text-secondary-100">
                     ₹{sanction.sanctionedAmount.toLocaleString()}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Tenure</p>
-                  <p className="text-lg font-semibold">{sanction.tenureMonths} months</p>
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">Tenure</p>
+                  <p className="text-lg font-semibold text-secondary-900 dark:text-secondary-100">{sanction.tenureMonths} months</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Annual Rate</p>
-                  <p className="text-lg font-semibold">{sanction.rateAnnual}%</p>
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">Annual Rate</p>
+                  <p className="text-lg font-semibold text-secondary-900 dark:text-secondary-100">{sanction.rateAnnual}%</p>
                 </div>
                 {sanction.emi && (
-                  <div className="md:col-span-2">
-                    <p className="text-sm text-gray-500">EMI</p>
-                    <p className="text-2xl font-bold text-blue-600">
+                  <div className="md:col-span-2 p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg border border-primary-200 dark:border-primary-800">
+                    <p className="text-sm text-secondary-600 dark:text-secondary-400">Monthly EMI</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-primary-600 dark:text-primary-400">
                       ₹{sanction.emi.toLocaleString()}
                     </p>
                   </div>
@@ -199,10 +199,10 @@ export default function SanctionOffer() {
                     error={acceptErrors.sanctionId?.message}
                   />
                   {error && (
-                    <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>
+                    <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>
                   )}
                   {message && (
-                    <div className="text-sm text-green-700 bg-green-50 p-3 rounded">
+                    <div className="text-sm text-success-700 dark:text-success-400 bg-success-50 dark:bg-success-900/20 p-3 rounded">
                       {message}
                     </div>
                   )}

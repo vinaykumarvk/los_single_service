@@ -88,9 +88,9 @@ export default function Underwriting() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Underwriting Review</h1>
-      {applicationId && <p className="text-gray-600">Application ID: {applicationId}</p>}
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Underwriting Review</h1>
+      {applicationId && <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400">Application ID: {applicationId}</p>}
 
       <Card>
         <CardHeader>
@@ -147,7 +147,7 @@ export default function Underwriting() {
                 error={errors.applicantAgeYears?.message}
               />
             </div>
-            <Card className="bg-gray-50">
+            <Card className="bg-secondary-50 dark:bg-secondary-800/50 border-secondary-200 dark:border-secondary-700">
               <CardHeader>
                 <CardTitle className="text-base">Product Rules</CardTitle>
               </CardHeader>
@@ -176,7 +176,7 @@ export default function Underwriting() {
                 </div>
               </CardContent>
             </Card>
-            {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>}
+            {error && <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>}
             <Button disabled={loading || !applicationId} type="submit">
               <Calculator className="mr-2 h-4 w-4" />
               {loading ? 'Processing...' : 'Run Underwriting'}
@@ -199,21 +199,21 @@ export default function Underwriting() {
           <CardContent className="space-y-4">
             {result.metrics && (
               <div className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <p className="text-sm text-gray-500">FOIR</p>
-                  <p className="text-lg font-semibold">
+                <div className="p-3 bg-secondary-50 dark:bg-secondary-800/50 rounded-lg">
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">FOIR</p>
+                  <p className="text-lg sm:text-xl font-semibold text-secondary-900 dark:text-secondary-100">
                     {result.metrics.foir ? (result.metrics.foir * 100).toFixed(2) : '-'}%
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">LTV</p>
-                  <p className="text-lg font-semibold">
+                <div className="p-3 bg-secondary-50 dark:bg-secondary-800/50 rounded-lg">
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">LTV</p>
+                  <p className="text-lg sm:text-xl font-semibold text-secondary-900 dark:text-secondary-100">
                     {result.metrics.ltv ? (result.metrics.ltv * 100).toFixed(2) : '-'}%
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Age at Maturity</p>
-                  <p className="text-lg font-semibold">{result.metrics.ageAtMaturity || '-'} years</p>
+                <div className="p-3 bg-secondary-50 dark:bg-secondary-800/50 rounded-lg">
+                  <p className="text-sm text-secondary-500 dark:text-secondary-400">Age at Maturity</p>
+                  <p className="text-lg sm:text-xl font-semibold text-secondary-900 dark:text-secondary-100">{result.metrics.ageAtMaturity || '-'} years</p>
                 </div>
               </div>
             )}

@@ -98,9 +98,9 @@ export default function Payments() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Payment Management</h1>
-      {applicationId && <p className="text-gray-600">Application ID: {applicationId}</p>}
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Payment Management</h1>
+      {applicationId && <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400">Application ID: {applicationId}</p>}
 
       <Card>
         <CardHeader>
@@ -116,12 +116,12 @@ export default function Payments() {
             />
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-secondary-700 dark:text-secondary-300 mb-2">
                   Fee Type
                 </label>
                 <select
                   {...registerCalculate('config.type')}
-                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                  className="flex h-10 w-full rounded-md border border-secondary-300 dark:border-secondary-700 bg-white dark:bg-secondary-900 px-3 py-2 text-sm text-secondary-900 dark:text-secondary-100"
                 >
                   <option value="percent">Percentage</option>
                   <option value="fixed">Fixed</option>
@@ -141,16 +141,16 @@ export default function Payments() {
               {...registerCalculate('config.min', { valueAsNumber: true })}
               error={calculateErrors.config?.min?.message}
             />
-            {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>}
+            {error && <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>}
             <Button disabled={loading || !applicationId} type="submit">
               <Calculator className="mr-2 h-4 w-4" />
               {loading ? 'Calculating...' : 'Calculate Fee'}
             </Button>
           </form>
           {calculatedFee !== null && (
-            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-gray-600">Calculated Fee</p>
-              <p className="text-2xl font-bold text-blue-600">₹{calculatedFee.toLocaleString()}</p>
+            <div className="mt-4 p-4 bg-primary-50 dark:bg-primary-900/30 rounded-lg border border-primary-200 dark:border-primary-800">
+              <p className="text-sm text-secondary-600 dark:text-secondary-400">Calculated Fee</p>
+              <p className="text-2xl sm:text-3xl font-bold text-primary-600 dark:text-primary-400">₹{calculatedFee.toLocaleString()}</p>
             </div>
           )}
         </CardContent>
@@ -175,9 +175,9 @@ export default function Payments() {
               error={captureErrors.currency?.message}
               readOnly
             />
-            {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>}
+            {error && <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>}
             {message && (
-              <div className="text-sm text-green-700 bg-green-50 p-3 rounded">{message}</div>
+              <div className="text-sm text-success-700 dark:text-success-400 bg-success-50 dark:bg-success-900/20 p-3 rounded">{message}</div>
             )}
             <Button disabled={loading || !applicationId} type="submit">
               <CreditCard className="mr-2 h-4 w-4" />

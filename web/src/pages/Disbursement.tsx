@@ -71,9 +71,9 @@ export default function Disbursement() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Disbursement</h1>
-      {applicationId && <p className="text-gray-600">Application ID: {applicationId}</p>}
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Disbursement</h1>
+      {applicationId && <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400">Application ID: {applicationId}</p>}
 
       <Card>
         <CardHeader>
@@ -99,11 +99,11 @@ export default function Disbursement() {
               {...register('ifsc')}
               error={errors.ifsc?.message}
             />
-            <div className="p-3 bg-gray-50 rounded text-sm text-gray-600">
+            <div className="p-3 bg-secondary-50 dark:bg-secondary-800/50 rounded text-sm text-secondary-700 dark:text-secondary-300 border border-secondary-200 dark:border-secondary-700">
               <p className="font-medium">Idempotency Key: {idempotencyKey}</p>
-              <p className="text-xs mt-1">This ensures duplicate requests are safely handled.</p>
+              <p className="text-xs mt-1 text-secondary-600 dark:text-secondary-400">This ensures duplicate requests are safely handled.</p>
             </div>
-            {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>}
+            {error && <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>}
             <Button disabled={loading || !applicationId} type="submit">
               <Send className="mr-2 h-4 w-4" />
               {loading ? 'Processing...' : 'Request Disbursement'}
@@ -126,11 +126,11 @@ export default function Disbursement() {
           <CardContent>
             <div className="space-y-2">
               <div>
-                <p className="text-sm text-gray-500">Disbursement ID</p>
-                <p className="font-medium">{result.disbursementId}</p>
+                <p className="text-sm text-secondary-500 dark:text-secondary-400">Disbursement ID</p>
+                <p className="font-medium text-secondary-900 dark:text-secondary-100">{result.disbursementId}</p>
               </div>
               {result.message && (
-                <div className="mt-4 p-3 bg-blue-50 rounded text-sm text-blue-700">
+                <div className="mt-4 p-3 bg-primary-50 dark:bg-primary-900/30 rounded text-sm text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800">
                   {result.message}
                 </div>
               )}

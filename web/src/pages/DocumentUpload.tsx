@@ -83,10 +83,10 @@ export default function DocumentUpload() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold">Document Management</h1>
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Document Management</h1>
       {applicationId && (
-        <p className="text-gray-600">Application ID: {applicationId}</p>
+        <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400">Application ID: {applicationId}</p>
       )}
 
       <Card>
@@ -110,19 +110,19 @@ export default function DocumentUpload() {
               <option value="Address Proof" />
             </datalist>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-secondary-700 dark:text-secondary-300 mb-2">
                 File
               </label>
               <input
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                className="block w-full text-sm text-secondary-500 dark:text-secondary-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 dark:file:bg-primary-900/30 file:text-primary-700 dark:file:text-primary-400 hover:file:bg-primary-100 dark:hover:file:bg-primary-900/50 transition-colors"
               />
-              {file && <p className="mt-1 text-sm text-gray-600">Selected: {file.name}</p>}
+              {file && <p className="mt-1 text-sm text-secondary-600 dark:text-secondary-400">Selected: {file.name}</p>}
             </div>
-            {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded">{error}</div>}
-            {message && <div className="text-sm text-green-700 bg-green-50 p-3 rounded">{message}</div>}
+            {error && <div className="text-sm text-error-700 dark:text-error-400 bg-error-50 dark:bg-error-900/20 p-3 rounded">{error}</div>}
+            {message && <div className="text-sm text-success-700 dark:text-success-400 bg-success-50 dark:bg-success-900/20 p-3 rounded">{message}</div>}
             <Button disabled={loading || !file || !applicationId} type="submit">
               <Upload className="mr-2 h-4 w-4" />
               {loading ? 'Uploading...' : 'Upload Document'}
@@ -137,25 +137,25 @@ export default function DocumentUpload() {
         </CardHeader>
         <CardContent>
           {loadingDocs ? (
-            <div className="text-center py-8">Loading documents...</div>
+            <div className="text-center py-8 text-secondary-600 dark:text-secondary-400">Loading documents...</div>
           ) : documents.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No documents uploaded yet</div>
+            <div className="text-center py-8 text-secondary-500 dark:text-secondary-400">No documents uploaded yet</div>
           ) : (
             <div className="space-y-3">
               {documents.map((doc) => (
                 <div
                   key={doc.docId}
-                  className="flex items-center justify-between p-4 border rounded-lg"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border border-secondary-200 dark:border-secondary-800 rounded-lg hover:bg-secondary-50 dark:hover:bg-secondary-800/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     {getStatusIcon(doc.status)}
                     <div>
-                      <p className="font-medium">{doc.docType}</p>
-                      <p className="text-sm text-gray-500">{doc.fileName}</p>
+                      <p className="font-medium text-secondary-900 dark:text-secondary-100">{doc.docType}</p>
+                      <p className="text-sm text-secondary-500 dark:text-secondary-400">{doc.fileName}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">{doc.status}</span>
+                    <span className="text-sm text-secondary-600 dark:text-secondary-400">{doc.status}</span>
                     <Button
                       variant="outline"
                       size="sm"
