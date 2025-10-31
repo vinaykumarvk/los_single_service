@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
+import { SkeletonCard } from '../components/ui/Skeleton';
 import { FileText, Plus, TrendingUp, DollarSign, CheckCircle, Clock, ArrowUp, ArrowDown, Activity } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -69,6 +70,15 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {loading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : (
+          <>
         <Card className="overflow-hidden relative">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary-400/10 to-primary-600/10 rounded-full -mr-16 -mt-16" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -156,6 +166,8 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

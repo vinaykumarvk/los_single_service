@@ -13,11 +13,13 @@ import Disbursement from '../pages/Disbursement';
 import Login from '../pages/Login';
 import Callback from '../pages/Callback';
 import AuthGuard from '../components/AuthGuard';
+import { ToastProvider } from '../components/ui/Toast';
 import '../index.css';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/callback" element={<Callback />} />
@@ -44,5 +46,6 @@ export default function App() {
         />
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
