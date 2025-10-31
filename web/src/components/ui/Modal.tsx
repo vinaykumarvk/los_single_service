@@ -60,13 +60,13 @@ export default function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm animate-fade-in"
+        className="absolute inset-0 bg-secondary-900/50 dark:bg-black/70 backdrop-blur-sm animate-fade-in"
         onClick={closeOnBackdropClick ? onClose : undefined}
         aria-hidden="true"
       />
       <div
         className={cn(
-          'relative bg-white rounded-2xl shadow-2xl w-full animate-scale-in',
+          'relative bg-white dark:bg-secondary-900 rounded-2xl shadow-2xl w-full animate-scale-in',
           sizeClasses[size]
         )}
         role="dialog"
@@ -74,21 +74,21 @@ export default function Modal({
         aria-labelledby={title ? 'modal-title' : undefined}
       >
         {(title || showCloseButton) && (
-          <div className="flex items-start justify-between p-6 border-b border-secondary-200">
+          <div className="flex items-start justify-between p-4 sm:p-6 border-b border-secondary-200 dark:border-secondary-800">
             <div>
               {title && (
-                <h2 id="modal-title" className="text-xl font-semibold text-secondary-900">
+                <h2 id="modal-title" className="text-lg sm:text-xl font-semibold text-secondary-900 dark:text-secondary-100">
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-secondary-600 mt-1">{description}</p>
+                <p className="text-sm text-secondary-600 dark:text-secondary-400 mt-1">{description}</p>
               )}
             </div>
             {showCloseButton && (
               <button
                 onClick={onClose}
-                className="flex-shrink-0 p-2 -mr-2 text-secondary-400 hover:text-secondary-600 hover:bg-secondary-100 rounded-lg transition-colors"
+                className="flex-shrink-0 p-2 -mr-2 text-secondary-400 dark:text-secondary-500 hover:text-secondary-600 dark:hover:text-secondary-300 hover:bg-secondary-100 dark:hover:bg-secondary-800 rounded-lg transition-colors"
                 aria-label="Close"
               >
                 <X className="h-5 w-5" />
@@ -96,9 +96,9 @@ export default function Modal({
             )}
           </div>
         )}
-        <div className="p-6">{children}</div>
+        <div className="p-4 sm:p-6">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-secondary-200 bg-secondary-50 rounded-b-2xl">
+          <div className="flex flex-col sm:flex-row items-center justify-end gap-2 sm:gap-3 p-4 sm:p-6 border-t border-secondary-200 dark:border-secondary-800 bg-secondary-50 dark:bg-secondary-800/50 rounded-b-2xl">
             {footer}
           </div>
         )}
@@ -149,7 +149,7 @@ export function ConfirmModal({
         </>
       }
     >
-      <p className="text-secondary-700">{message}</p>
+      <p className="text-secondary-700 dark:text-secondary-300">{message}</p>
     </Modal>
   );
 }

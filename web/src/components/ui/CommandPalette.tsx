@@ -136,37 +136,37 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   let globalIndex = 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] px-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] sm:pt-[20vh] px-4">
       <div
-        className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm animate-fade-in"
+        className="absolute inset-0 bg-secondary-900/50 dark:bg-black/70 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden animate-scale-in">
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-secondary-200">
-          <Search className="h-5 w-5 text-secondary-400" />
+      <div className="relative w-full max-w-2xl bg-white dark:bg-secondary-900 rounded-2xl shadow-2xl overflow-hidden animate-scale-in">
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-secondary-200 dark:border-secondary-800">
+          <Search className="h-5 w-5 text-secondary-400 dark:text-secondary-500" />
           <input
             type="text"
             placeholder="Type a command or search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-secondary-900 placeholder-secondary-400"
+            className="flex-1 bg-transparent outline-none text-secondary-900 dark:text-secondary-100 placeholder-secondary-400 dark:placeholder-secondary-500"
             autoFocus
           />
-          <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-secondary-500 bg-secondary-100 rounded">
+          <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-secondary-500 dark:text-secondary-400 bg-secondary-100 dark:bg-secondary-800 rounded">
             <span className="text-xs">⌘</span>K
           </kbd>
         </div>
 
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto">
           {filteredCommands.length === 0 ? (
-            <div className="px-4 py-12 text-center text-secondary-500">
+            <div className="px-4 py-12 text-center text-secondary-500 dark:text-secondary-400">
               No commands found
             </div>
           ) : (
             <div className="py-2">
               {Object.entries(groupedCommands).map(([category, cmds]) => (
                 <Fragment key={category}>
-                  <div className="px-4 py-2 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
+                  <div className="px-4 py-2 text-xs font-semibold text-secondary-500 dark:text-secondary-400 uppercase tracking-wider">
                     {category}
                   </div>
                   {cmds.map(cmd => {
@@ -183,24 +183,24 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                         className={cn(
                           'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors',
                           currentIndex === selectedIndex
-                            ? 'bg-primary-50 text-primary-900'
-                            : 'hover:bg-secondary-50 text-secondary-900'
+                            ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-900 dark:text-primary-100'
+                            : 'hover:bg-secondary-50 dark:hover:bg-secondary-800 text-secondary-900 dark:text-secondary-100'
                         )}
                       >
                         {Icon && (
                           <div className={cn(
                             'p-2 rounded-lg',
                             currentIndex === selectedIndex
-                              ? 'bg-primary-100 text-primary-600'
-                              : 'bg-secondary-100 text-secondary-600'
+                              ? 'bg-primary-100 dark:bg-primary-800/50 text-primary-600 dark:text-primary-400'
+                              : 'bg-secondary-100 dark:bg-secondary-800 text-secondary-600 dark:text-secondary-400'
                           )}>
                             <Icon className="h-4 w-4" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium">{cmd.label}</div>
+                          <div className="font-medium truncate">{cmd.label}</div>
                           {cmd.description && (
-                            <div className="text-sm text-secondary-500">
+                            <div className="text-sm text-secondary-500 dark:text-secondary-400 truncate">
                               {cmd.description}
                             </div>
                           )}
@@ -214,19 +214,19 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
           )}
         </div>
 
-        <div className="px-4 py-3 border-t border-secondary-200 bg-secondary-50 text-xs text-secondary-500 flex items-center gap-4">
+        <div className="px-4 py-3 border-t border-secondary-200 dark:border-secondary-800 bg-secondary-50 dark:bg-secondary-800/50 text-xs text-secondary-500 dark:text-secondary-400 flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-white border border-secondary-300 rounded">↑</kbd>
-            <kbd className="px-1.5 py-0.5 bg-white border border-secondary-300 rounded">↓</kbd>
-            <span>Navigate</span>
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-secondary-900 border border-secondary-300 dark:border-secondary-700 rounded">↑</kbd>
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-secondary-900 border border-secondary-300 dark:border-secondary-700 rounded">↓</kbd>
+            <span className="hidden sm:inline">Navigate</span>
           </div>
           <div className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-white border border-secondary-300 rounded">↵</kbd>
-            <span>Select</span>
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-secondary-900 border border-secondary-300 dark:border-secondary-700 rounded">↵</kbd>
+            <span className="hidden sm:inline">Select</span>
           </div>
           <div className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-white border border-secondary-300 rounded">Esc</kbd>
-            <span>Close</span>
+            <kbd className="px-1.5 py-0.5 bg-white dark:bg-secondary-900 border border-secondary-300 dark:border-secondary-700 rounded">Esc</kbd>
+            <span className="hidden sm:inline">Close</span>
           </div>
         </div>
       </div>

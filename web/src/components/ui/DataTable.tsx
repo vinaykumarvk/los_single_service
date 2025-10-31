@@ -128,19 +128,19 @@ export default function DataTable<T>({
                   className="fixed inset-0 z-10"
                   onClick={() => setShowColumnToggle(false)}
                 />
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-secondary-200 py-2 z-20">
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-secondary-800 rounded-lg shadow-lg border border-secondary-200 dark:border-secondary-700 py-2 z-20">
                   {columns.map(col => (
                     <label
                       key={col.key}
-                      className="flex items-center px-4 py-2 hover:bg-secondary-50 cursor-pointer"
+                      className="flex items-center px-4 py-2 hover:bg-secondary-50 dark:hover:bg-secondary-700 cursor-pointer"
                     >
                       <input
                         type="checkbox"
                         checked={!hiddenColumns.has(col.key)}
                         onChange={() => toggleColumn(col.key)}
-                        className="rounded border-secondary-300 text-primary-600 focus:ring-primary-500 mr-3"
+                        className="rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500 mr-3 dark:bg-secondary-900"
                       />
-                      <span className="text-sm text-secondary-700">{col.label}</span>
+                      <span className="text-sm text-secondary-700 dark:text-secondary-300">{col.label}</span>
                     </label>
                   ))}
                 </div>
@@ -150,12 +150,12 @@ export default function DataTable<T>({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-secondary-200">
+      <div className="overflow-x-auto rounded-xl border border-secondary-200 dark:border-secondary-800">
         <table className="w-full">
-          <thead className="bg-secondary-50 border-b border-secondary-200">
+          <thead className="bg-secondary-50 dark:bg-secondary-800 border-b border-secondary-200 dark:border-secondary-700">
             <tr>
               {selectable && (
-                <th className="px-6 py-4 w-12">
+                <th className="px-4 sm:px-6 py-3 sm:py-4 w-12">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -163,7 +163,7 @@ export default function DataTable<T>({
                       if (input) input.indeterminate = someSelected;
                     }}
                     onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded border-secondary-300 text-primary-600 focus:ring-primary-500"
+                    className="rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500 dark:bg-secondary-900"
                   />
                 </th>
               )}
@@ -171,10 +171,10 @@ export default function DataTable<T>({
                 <th
                   key={col.key}
                   className={cn(
-                    'px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider',
+                    'px-4 sm:px-6 py-3 sm:py-4 text-xs font-semibold text-secondary-600 dark:text-secondary-400 uppercase tracking-wider',
                     col.align === 'right' && 'text-right',
                     col.align === 'center' && 'text-center',
-                    col.sortable && 'cursor-pointer hover:bg-secondary-100 transition-colors'
+                    col.sortable && 'cursor-pointer hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors'
                   )}
                   style={{ width: col.width }}
                   onClick={() => col.sortable && handleSort(col.key)}
@@ -182,7 +182,7 @@ export default function DataTable<T>({
                   <div className="flex items-center gap-2">
                     <span>{col.label}</span>
                     {col.sortable && (
-                      <div className="text-secondary-400">
+                      <div className="text-secondary-400 dark:text-secondary-500">
                         {sortBy === col.key ? (
                           sortDirection === 'asc' ? (
                             <ChevronUp className="h-4 w-4" />
@@ -199,7 +199,7 @@ export default function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-secondary-200">
+          <tbody className="bg-white dark:bg-secondary-900 divide-y divide-secondary-200 dark:divide-secondary-800">
             {sortedData.map((item) => {
               const key = keyExtractor(item);
               const isSelected = selectedRows.has(key);
@@ -209,13 +209,13 @@ export default function DataTable<T>({
                   key={key}
                   className={cn(
                     'transition-colors',
-                    onRowClick && 'cursor-pointer hover:bg-secondary-50',
-                    isSelected && 'bg-primary-50'
+                    onRowClick && 'cursor-pointer hover:bg-secondary-50 dark:hover:bg-secondary-800',
+                    isSelected && 'bg-primary-50 dark:bg-primary-900/20'
                   )}
                   onClick={() => onRowClick?.(item)}
                 >
                   {selectable && (
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-3 sm:py-4">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -224,7 +224,7 @@ export default function DataTable<T>({
                           handleSelectRow(key, e.target.checked);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded border-secondary-300 text-primary-600 focus:ring-primary-500"
+                        className="rounded border-secondary-300 dark:border-secondary-600 text-primary-600 focus:ring-primary-500 dark:bg-secondary-900"
                       />
                     </td>
                   )}
@@ -232,7 +232,7 @@ export default function DataTable<T>({
                     <td
                       key={col.key}
                       className={cn(
-                        'px-6 py-4 text-sm text-secondary-900',
+                        'px-4 sm:px-6 py-3 sm:py-4 text-sm text-secondary-900 dark:text-secondary-100',
                         col.align === 'right' && 'text-right',
                         col.align === 'center' && 'text-center'
                       )}

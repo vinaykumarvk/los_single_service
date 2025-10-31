@@ -64,7 +64,7 @@ function ToastContainer({
   onRemove: (id: string) => void;
 }) {
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-3 max-w-md w-full pointer-events-none">
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-3 max-w-md w-full px-4 sm:px-0 pointer-events-none">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={onRemove} />
       ))}
@@ -87,17 +87,17 @@ function ToastItem({
   };
 
   const styles = {
-    success: 'bg-success-50 border-success-200 text-success-900',
-    error: 'bg-error-50 border-error-200 text-error-900',
-    warning: 'bg-warning-50 border-warning-200 text-warning-900',
-    info: 'bg-primary-50 border-primary-200 text-primary-900',
+    success: 'bg-success-50 dark:bg-success-900/40 border-success-200 dark:border-success-800 text-success-900 dark:text-success-100',
+    error: 'bg-error-50 dark:bg-error-900/40 border-error-200 dark:border-error-800 text-error-900 dark:text-error-100',
+    warning: 'bg-warning-50 dark:bg-warning-900/40 border-warning-200 dark:border-warning-800 text-warning-900 dark:text-warning-100',
+    info: 'bg-primary-50 dark:bg-primary-900/40 border-primary-200 dark:border-primary-800 text-primary-900 dark:text-primary-100',
   };
 
   const iconStyles = {
-    success: 'text-success-600',
-    error: 'text-error-600',
-    warning: 'text-warning-600',
-    info: 'text-primary-600',
+    success: 'text-success-600 dark:text-success-400',
+    error: 'text-error-600 dark:text-error-400',
+    warning: 'text-warning-600 dark:text-warning-400',
+    info: 'text-primary-600 dark:text-primary-400',
   };
 
   const Icon = icons[toast.type];

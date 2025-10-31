@@ -14,6 +14,7 @@ import Login from '../pages/Login';
 import Callback from '../pages/Callback';
 import AuthGuard from '../components/AuthGuard';
 import { ToastProvider } from '../components/ui/Toast';
+import { ThemeProvider } from '../contexts/ThemeContext';
 import CommandPalette, { useCommandPalette } from '../components/ui/CommandPalette';
 import '../index.css';
 
@@ -54,8 +55,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
