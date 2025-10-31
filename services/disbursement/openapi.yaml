@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: Disbursement Service API
+  version: 0.1.0
+paths:
+  /api/applications/{id}/disburse:
+    post:
+      summary: Request disbursement
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: { type: number }
+                beneficiaryAccount: { type: string }
+                ifsc: { type: string }
+              required: [amount, beneficiaryAccount, ifsc]
+      responses:
+        '202': { description: Requested }
+  /webhooks/cbs:
+    post:
+      summary: CBS callback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: Ack }
+

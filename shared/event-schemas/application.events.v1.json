@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:application:v1",
+  "title": "Application Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/ApplicationCreated" },
+    { "$ref": "#/definitions/ApplicationSubmitted" },
+    { "$ref": "#/definitions/ApplicationStatusChanged" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] },
+        "correlationId": { "type": "string" }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "ApplicationCreated": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.application.ApplicationCreated.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "channel": { "type": "string", "enum": ["Branch", "DSA", "Online", "Mobile"] },
+            "productCode": { "type": "string" },
+            "requestedAmount": { "type": "number", "minimum": 0 },
+            "requestedTenureMonths": { "type": "integer", "minimum": 1 },
+            "applicantId": { "type": "string", "format": "uuid" }
+          },
+          "required": ["type", "applicationId", "channel", "productCode", "requestedAmount", "requestedTenureMonths", "applicantId"]
+        }
+      ]
+    },
+    "ApplicationSubmitted": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.application.ApplicationSubmitted.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "submittedBy": { "type": "string" }
+          },
+          "required": ["type", "applicationId"]
+        }
+      ]
+    },
+    "ApplicationStatusChanged": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.application.ApplicationStatusChanged.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "fromStatus": { "type": "string" },
+            "toStatus": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "toStatus"]
+        }
+      ]
+    }
+  }
+}
+

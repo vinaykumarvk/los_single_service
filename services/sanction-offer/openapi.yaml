@@ -1,0 +1,36 @@
+openapi: 3.0.3
+info:
+  title: Sanction & Offer Service API
+  version: 0.1.0
+paths:
+  /api/applications/{id}/sanction:
+    post:
+      summary: Create sanction terms
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sanctionedAmount: { type: number }
+                tenureMonths: { type: integer }
+                rateAnnual: { type: number }
+      responses:
+        '201': { description: Issued }
+  /api/applications/{id}/offer/accept:
+    post:
+      summary: Accept offer
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Accepted }
+

@@ -1,0 +1,51 @@
+openapi: 3.0.3
+info:
+  title: Application Service API
+  version: 0.1.0
+paths:
+  /api/applications:
+    post:
+      summary: Create application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                  enum: [Branch, DSA, Online, Mobile]
+                productCode:
+                  type: string
+                requestedAmount:
+                  type: number
+                requestedTenureMonths:
+                  type: integer
+                applicantId:
+                  type: string
+              required: [channel, productCode, requestedAmount, requestedTenureMonths, applicantId]
+      responses:
+        '201':
+          description: Created
+  /api/applications/{id}:
+    get:
+      summary: Get application by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /api/applications/{id}/submit:
+    post:
+      summary: Submit application
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '202': { description: Submitted }
+

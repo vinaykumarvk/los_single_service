@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:verification:v1",
+  "title": "Verification Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/VerificationTaskCreated" },
+    { "$ref": "#/definitions/VerificationCompleted" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "VerificationTaskCreated": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.verification.VerificationTaskCreated.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "taskId": { "type": "string", "format": "uuid" },
+            "verificationType": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "taskId", "verificationType"]
+        }
+      ]
+    },
+    "VerificationCompleted": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.verification.VerificationCompleted.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "taskId": { "type": "string", "format": "uuid" },
+            "verificationType": { "type": "string" },
+            "result": { "type": "string", "enum": ["PASS", "FAIL", "REVIEW"] },
+            "remarks": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "taskId", "verificationType", "result"]
+        }
+      ]
+    }
+  }
+}
+

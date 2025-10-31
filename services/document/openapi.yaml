@@ -1,0 +1,43 @@
+openapi: 3.0.3
+info:
+  title: Document Service API
+  version: 0.1.0
+paths:
+  /api/applications/{id}/documents:
+    post:
+      summary: Upload document
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                docType: { type: string }
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: Uploaded }
+  /api/documents/{docId}/verify:
+    patch:
+      summary: Verify document
+      parameters:
+        - in: path
+          name: docId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                remarks: { type: string }
+      responses:
+        '200': { description: Verified }
+

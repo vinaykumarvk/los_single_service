@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:document:v1",
+  "title": "Document Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/DocumentUploaded" },
+    { "$ref": "#/definitions/DocumentVerified" },
+    { "$ref": "#/definitions/DocumentRejected" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "DocumentUploaded": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.document.DocumentUploaded.v1" },
+            "docId": { "type": "string", "format": "uuid" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "docType": { "type": "string" },
+            "fileName": { "type": "string" },
+            "sizeBytes": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["type", "docId", "applicationId", "docType"]
+        }
+      ]
+    },
+    "DocumentVerified": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.document.DocumentVerified.v1" },
+            "docId": { "type": "string", "format": "uuid" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "remarks": { "type": "string" }
+          },
+          "required": ["type", "docId", "applicationId"]
+        }
+      ]
+    },
+    "DocumentRejected": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.document.DocumentRejected.v1" },
+            "docId": { "type": "string", "format": "uuid" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "reason": { "type": "string" }
+          },
+          "required": ["type", "docId", "applicationId", "reason"]
+        }
+      ]
+    }
+  }
+}
+

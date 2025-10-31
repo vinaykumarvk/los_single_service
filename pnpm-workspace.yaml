@@ -1,0 +1,8 @@
+packages:
+  - 'gateway'
+  - 'services/*'
+  - 'shared/libs'
+  - 'web'
+  - 'infra'
+  - 'reporting'
+

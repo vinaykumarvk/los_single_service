@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:sanction-offer:v1",
+  "title": "Sanction & Offer Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/SanctionIssued" },
+    { "$ref": "#/definitions/OfferGenerated" },
+    { "$ref": "#/definitions/OfferAccepted" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "SanctionIssued": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.sanction.SanctionIssued.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "sanctionId": { "type": "string", "format": "uuid" },
+            "sanctionedAmount": { "type": "number", "minimum": 0 },
+            "tenureMonths": { "type": "integer", "minimum": 1 },
+            "rateAnnual": { "type": "number", "minimum": 0 },
+            "emi": { "type": "number", "minimum": 0 }
+          },
+          "required": ["type", "applicationId", "sanctionId", "sanctionedAmount", "tenureMonths", "rateAnnual", "emi"]
+        }
+      ]
+    },
+    "OfferGenerated": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.sanction.OfferGenerated.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "sanctionId": { "type": "string", "format": "uuid" },
+            "offerUrl": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "sanctionId"]
+        }
+      ]
+    },
+    "OfferAccepted": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.sanction.OfferAccepted.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "sanctionId": { "type": "string", "format": "uuid" },
+            "acceptedBy": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "sanctionId"]
+        }
+      ]
+    }
+  }
+}
+

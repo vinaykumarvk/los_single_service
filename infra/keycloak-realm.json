@@ -1,0 +1,72 @@
+{
+  "id": "los",
+  "realm": "los",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "los-ui",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["+"],
+      "standardFlowEnabled": true
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "applicant",
+        "description": "Customer/Applicant role"
+      },
+      {
+        "name": "sales",
+        "description": "Sales/DSA role"
+      },
+      {
+        "name": "maker",
+        "description": "Loan Officer (Maker)"
+      },
+      {
+        "name": "checker",
+        "description": "Underwriter/Checker"
+      },
+      {
+        "name": "ops",
+        "description": "Operations/Disbursement"
+      },
+      {
+        "name": "risk",
+        "description": "Risk/Compliance"
+      },
+      {
+        "name": "admin",
+        "description": "System Admin"
+      },
+      {
+        "name": "pii:read",
+        "description": "Can view unmasked PII (PAN/Aadhaar)"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "maker1",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "maker1", "temporary": false }],
+      "realmRoles": ["maker"]
+    },
+    {
+      "username": "checker1",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "checker1", "temporary": false }],
+      "realmRoles": ["checker", "pii:read"]
+    },
+    {
+      "username": "admin1",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "admin1", "temporary": false }],
+      "realmRoles": ["admin", "pii:read"]
+    }
+  ]
+}
+

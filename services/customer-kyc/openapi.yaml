@@ -1,0 +1,50 @@
+openapi: 3.0.3
+info:
+  title: Customer & KYC Service API
+  version: 0.1.0
+paths:
+  /api/applicants/{id}:
+    put:
+      summary: Upsert applicant profile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: OK }
+  /api/applicants/{id}/consent:
+    post:
+      summary: Capture consent
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                purpose: { type: string }
+      responses:
+        '201': { description: Recorded }
+  /api/kyc/{applicationId}/start:
+    post:
+      summary: Start KYC for application
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema: { type: string }
+      responses:
+        '202': { description: Started }
+

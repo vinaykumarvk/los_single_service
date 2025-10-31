@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:kyc:v1",
+  "title": "KYC Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/KycRequested" },
+    { "$ref": "#/definitions/KycCompleted" },
+    { "$ref": "#/definitions/KycFailed" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "KycRequested": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.kyc.KycRequested.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "applicantId": { "type": "string", "format": "uuid" },
+            "consentId": { "type": "string", "format": "uuid" }
+          },
+          "required": ["type", "applicationId", "applicantId"]
+        }
+      ]
+    },
+    "KycCompleted": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.kyc.KycCompleted.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "applicantId": { "type": "string", "format": "uuid" },
+            "result": { "type": "string", "enum": ["PASS", "REVIEW"] }
+          },
+          "required": ["type", "applicationId", "applicantId", "result"]
+        }
+      ]
+    },
+    "KycFailed": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.kyc.KycFailed.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "applicantId": { "type": "string", "format": "uuid" },
+            "reason": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "applicantId", "reason"]
+        }
+      ]
+    }
+  }
+}
+

@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: Underwriting Service API
+  version: 0.1.0
+paths:
+  /api/applications/{id}/underwrite:
+    post:
+      summary: Evaluate underwriting rules
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Decision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision: { type: string, enum: [AUTO_APPROVE, REFER, DECLINE] }
+                  reasons: { type: array, items: { type: string } }
+

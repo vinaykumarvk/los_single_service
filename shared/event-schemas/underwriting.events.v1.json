@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:underwriting:v1",
+  "title": "Underwriting Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/UnderwritingEvaluated" },
+    { "$ref": "#/definitions/DecisionMade" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "UnderwritingEvaluated": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.underwriting.UnderwritingEvaluated.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "foir": { "type": "number", "minimum": 0 },
+            "ltv": { "type": "number", "minimum": 0 },
+            "decision": { "type": "string", "enum": ["AUTO_APPROVE", "REFER", "DECLINE"] },
+            "reasons": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["type", "applicationId", "decision"]
+        }
+      ]
+    },
+    "DecisionMade": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.underwriting.DecisionMade.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "finalDecision": { "type": "string", "enum": ["APPROVED", "REJECTED"] },
+            "override": { "type": "boolean" },
+            "approverRole": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "finalDecision"]
+        }
+      ]
+    }
+  }
+}
+

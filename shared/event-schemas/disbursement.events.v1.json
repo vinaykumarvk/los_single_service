@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:los:events:disbursement:v1",
+  "title": "Disbursement Events v1",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/DisbursementRequested" },
+    { "$ref": "#/definitions/Disbursed" },
+    { "$ref": "#/definitions/DisbursementFailed" }
+  ],
+  "definitions": {
+    "BaseEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "producer": { "type": "string" },
+        "schemaVersion": { "type": "string", "enum": ["v1"] }
+      },
+      "required": ["eventId", "occurredAt", "producer", "schemaVersion"]
+    },
+    "DisbursementRequested": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.disbursement.DisbursementRequested.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "disbursementId": { "type": "string", "format": "uuid" },
+            "amount": { "type": "number", "minimum": 0 }
+          },
+          "required": ["type", "applicationId", "disbursementId", "amount"]
+        }
+      ]
+    },
+    "Disbursed": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.disbursement.Disbursed.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "disbursementId": { "type": "string", "format": "uuid" },
+            "cbsRef": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "disbursementId"]
+        }
+      ]
+    },
+    "DisbursementFailed": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseEvent" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "los.disbursement.DisbursementFailed.v1" },
+            "applicationId": { "type": "string", "format": "uuid" },
+            "disbursementId": { "type": "string", "format": "uuid" },
+            "reason": { "type": "string" }
+          },
+          "required": ["type", "applicationId", "disbursementId", "reason"]
+        }
+      ]
+    }
+  }
+}
+
