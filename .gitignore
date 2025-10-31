@@ -7,3 +7,20 @@ coverage/
 .turbo/
 pnpm-lock.yaml
 
+# Build artifacts
+*.log
+*.tsbuildinfo
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.nyc_output/
+
