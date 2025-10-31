@@ -132,7 +132,7 @@ export default function ApplicationDetail() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <Button variant="ghost" onClick={() => navigate('/applications')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -147,12 +147,12 @@ export default function ApplicationDetail() {
             <CardTitle>Application #{application.applicationId.slice(0, 8)}</CardTitle>
             <div className="flex items-center gap-2">
               {getStatusIcon(application.status)}
-              <span className="font-medium">{application.status}</span>
+              <span className="font-medium text-secondary-900 dark:text-secondary-100">{application.status}</span>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <dt className="text-sm font-medium text-secondary-500 dark:text-secondary-400">Applicant ID</dt>
               <dd className="mt-1 text-sm text-secondary-900 dark:text-secondary-100">{application.applicantId}</dd>
@@ -167,7 +167,7 @@ export default function ApplicationDetail() {
             </div>
             <div>
               <dt className="text-sm font-medium text-secondary-500 dark:text-secondary-400">Requested Amount</dt>
-              <dd className="mt-1 text-sm text-secondary-900 dark:text-secondary-100">
+              <dd className="mt-1 text-sm font-semibold text-secondary-900 dark:text-secondary-100">
                 ₹{application.requestedAmount.toLocaleString()}
               </dd>
             </div>
@@ -179,70 +179,71 @@ export default function ApplicationDetail() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Workflow Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3 text-sm">
-              <li className="flex items-center gap-3 p-2 rounded-lg bg-success-50 dark:bg-success-900/20">
-                <CheckCircle className="h-5 w-5 text-success-600 dark:text-success-400 flex-shrink-0" />
-                <span className="text-secondary-900 dark:text-secondary-100 font-medium">Application Created</span>
-              </li>
-              <li className="flex items-center gap-3 p-2 rounded-lg bg-warning-50 dark:bg-warning-900/20">
-                <Clock className="h-5 w-5 text-warning-600 dark:text-warning-400 flex-shrink-0" />
-                <span className="text-secondary-900 dark:text-secondary-100">KYC Verification</span>
-              </li>
-              <li className="flex items-center gap-3 p-2">
-                <Clock className="h-5 w-5 text-secondary-300 dark:text-secondary-700 flex-shrink-0" />
-                <span className="text-secondary-500 dark:text-secondary-500">Underwriting Review</span>
-              </li>
-              <li className="flex items-center gap-3 p-2">
-                <Clock className="h-5 w-5 text-secondary-300 dark:text-secondary-700 flex-shrink-0" />
-                <span className="text-secondary-500 dark:text-secondary-500">Sanction & Offer</span>
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Link to={`/applications/${application.applicationId}/documents`}>
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full justify-start">
                 <FileText className="mr-2 h-4 w-4" />
                 Manage Documents
               </Button>
             </Link>
             <Link to={`/applications/${application.applicationId}/underwriting`}>
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full justify-start">
                 <Scale className="mr-2 h-4 w-4" />
                 Underwriting Review
               </Button>
             </Link>
             <Link to={`/applications/${application.applicationId}/sanction`}>
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full justify-start">
                 <FileCheck className="mr-2 h-4 w-4" />
                 Sanction & Offer
               </Button>
             </Link>
             <Link to={`/applications/${application.applicationId}/payments`}>
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full justify-start">
                 <CreditCard className="mr-2 h-4 w-4" />
                 Payments
               </Button>
             </Link>
             <Link to={`/applications/${application.applicationId}/disbursement`}>
-              <Button variant="outline" className="w-full">
+              <Button variant="outline" className="w-full justify-start">
                 <Send className="mr-2 h-4 w-4" />
                 Disbursement
               </Button>
             </Link>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workflow Progress</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-3 text-sm">
+            <li className="flex items-center gap-3 p-2 rounded-lg bg-success-50 dark:bg-success-900/20">
+              <CheckCircle className="h-5 w-5 text-success-600 dark:text-success-400 flex-shrink-0" />
+              <span className="text-secondary-900 dark:text-secondary-100 font-medium">Application Created</span>
+            </li>
+            <li className="flex items-center gap-3 p-2 rounded-lg bg-warning-50 dark:bg-warning-900/20">
+              <Clock className="h-5 w-5 text-warning-600 dark:text-warning-400 flex-shrink-0" />
+              <span className="text-secondary-900 dark:text-secondary-100">KYC Verification</span>
+            </li>
+            <li className="flex items-center gap-3 p-2">
+              <Clock className="h-5 w-5 text-secondary-300 dark:text-secondary-700 flex-shrink-0" />
+              <span className="text-secondary-500 dark:text-secondary-500">Underwriting Review</span>
+            </li>
+            <li className="flex items-center gap-3 p-2">
+              <Clock className="h-5 w-5 text-secondary-300 dark:text-secondary-700 flex-shrink-0" />
+              <span className="text-secondary-500 dark:text-secondary-500">Sanction & Offer</span>
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
     </div>
   );
 }

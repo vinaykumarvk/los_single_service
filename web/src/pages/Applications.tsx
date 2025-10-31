@@ -122,7 +122,7 @@ export default function Applications() {
       sortable: true,
       width: '10%',
       render: (app) => (
-        <span className="text-sm font-mono font-medium text-secondary-900">
+        <span className="text-sm font-mono font-medium text-secondary-900 dark:text-secondary-100">
           #{app.id}
         </span>
       ),
@@ -133,7 +133,7 @@ export default function Applications() {
       sortable: true,
       width: '20%',
       render: (app) => (
-        <span className="text-sm font-medium text-secondary-900">
+        <span className="text-sm font-medium text-secondary-900 dark:text-secondary-100">
           {app.customerName}
         </span>
       ),
@@ -144,7 +144,7 @@ export default function Applications() {
       sortable: true,
       width: '15%',
       render: (app) => (
-        <span className="text-sm text-secondary-700">{app.productType}</span>
+        <span className="text-sm text-secondary-700 dark:text-secondary-300">{app.productType}</span>
       ),
     },
     {
@@ -154,7 +154,7 @@ export default function Applications() {
       width: '15%',
       align: 'right',
       render: (app) => (
-        <span className="text-sm font-semibold text-secondary-900">
+        <span className="text-sm font-semibold text-secondary-900 dark:text-secondary-100">
           ₹{app.loanAmount.toLocaleString('en-IN')}
         </span>
       ),
@@ -172,7 +172,7 @@ export default function Applications() {
       sortable: true,
       width: '15%',
       render: (app) => (
-        <span className="text-sm text-secondary-600">
+        <span className="text-sm text-secondary-600 dark:text-secondary-400">
           {new Date(app.createdAt).toLocaleDateString('en-IN')}
         </span>
       ),

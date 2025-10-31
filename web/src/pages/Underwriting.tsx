@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import api from '../lib/api';
-import { Calculator, CheckCircle, XCircle } from 'lucide-react';
+import { Calculator, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const schema = z.object({
   monthlyIncome: z.number().positive('Monthly income must be positive'),
@@ -89,8 +90,18 @@ export default function Underwriting() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Underwriting Review</h1>
-      {applicationId && <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400">Application ID: {applicationId}</p>}
+      <div className="flex items-center gap-4">
+        <Link to={`/applications/${applicationId}`}>
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Application
+          </Button>
+        </Link>
+      </div>
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100">Underwriting Review</h1>
+        {applicationId && <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400 mt-1">Application ID: {applicationId}</p>}
+      </div>
 
       <Card>
         <CardHeader>
