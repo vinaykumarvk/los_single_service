@@ -18,6 +18,23 @@ This is a comprehensive microservices-based Loan Origination System built with T
 
 ## Recent Changes
 
+**October 31, 2025 - UX Improvements & Navigation Enhancements**
+- **ApplicationDetail page reorganization**:
+  - Moved workflow action buttons to prominent "Workflow Actions" card at top of page
+  - Implemented responsive grid layout (3 columns desktop, 2 tablet, 1 mobile)
+  - Improved user experience by making critical actions immediately accessible
+- **Added back navigation to all service pages**:
+  - All 5 service pages (DocumentUpload, Underwriting, SanctionOffer, Payments, Disbursement) now feature "Back to Application" button
+  - Consistent navigation pattern links back to `/applications/{applicationId}`
+  - Enhances user flow and reduces navigation friction
+- **Fixed dark mode visibility in Applications table**:
+  - Updated all table column render functions with proper dark mode color variants
+  - Application ID, Customer Name, Loan Amount: `dark:text-secondary-100`
+  - Product Type: `dark:text-secondary-300`
+  - Created Date: `dark:text-secondary-400`
+  - Ensures excellent legibility in both light and dark modes
+- Verified architect review: All changes approved with no blocking issues
+
 **October 31, 2025 - Complete Dark Mode & Mobile Responsiveness Implementation**
 - Implemented comprehensive dark mode system:
   - Created ThemeContext with localStorage persistence and OS preference detection
@@ -41,7 +58,6 @@ This is a comprehensive microservices-based Loan Origination System built with T
   - Payments: Fee calculation and payment capture
   - Disbursement: Disbursement request with idempotency handling
   - All service pages feature consistent dark mode styling and mobile responsiveness
-- Verified architect review: All changes approved with no blocking issues
 - **Status**: Complete enterprise-grade UI system deployed across all 12 pages
 
 **October 31, 2025 - Replit Environment Setup**
