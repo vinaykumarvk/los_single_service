@@ -14,12 +14,15 @@ import Login from '../pages/Login';
 import Callback from '../pages/Callback';
 import AuthGuard from '../components/AuthGuard';
 import { ToastProvider } from '../components/ui/Toast';
+import CommandPalette, { useCommandPalette } from '../components/ui/CommandPalette';
 import '../index.css';
 
-export default function App() {
+function AppContent() {
+  const commandPalette = useCommandPalette();
+
   return (
-    <ToastProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/callback" element={<Callback />} />
@@ -46,6 +49,13 @@ export default function App() {
         />
       </Routes>
     </BrowserRouter>
+  );
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
     </ToastProvider>
   );
 }

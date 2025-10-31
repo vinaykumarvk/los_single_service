@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
-import { SkeletonTable } from '../components/ui/Skeleton';
-import { Plus, Search, Filter, Download, Eye } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import DataTable, { Column } from '../components/ui/DataTable';
+import { useToast } from '../components/ui/Toast';
+import { ConfirmModal } from '../components/ui/Modal';
+import { Plus, Search, Filter, Download, Trash2, CheckCircle, XCircle, MoreVertical } from 'lucide-react';
 
 interface Application {
   id: string;
@@ -19,9 +20,12 @@ interface Application {
 
 export default function Applications() {
   const navigate = useNavigate();
-  const [loading] = useState(false);
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBulkActions, setShowBulkActions] = useState(false);
 
   const mockApplications: Application[] = [
     {
@@ -64,11 +68,25 @@ export default function Applications() {
       status: 'draft',
       createdAt: '2024-10-30',
     },
+    {
+      id: '6',
+      customerName: 'Anjali Gupta',
+      loanAmount: 850000,
+      productType: 'Home Loan',
+      status: 'approved',
+      createdAt: '2024-10-27',
+    },
+    {
+      id: '7',
+      customerName: 'Rohit Verma',
+      loanAmount: 150000,
+      productType: 'Personal Loan',
+      status: 'rejected',
+      createdAt: '2024-10-26',
+    },
   ];
 
-  const applications = mockApplications;
-
-  const filteredApplications = applications.filter((app) => {
+  const filteredApplications = mockApplications.filter((app) => {
     const matchesSearch = app.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.id.includes(searchQuery);
     const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
@@ -95,6 +113,129 @@ export default function Applications() {
     };
 
     return <Badge variant={variants[status]}>{labels[status]}</Badge>;
+  };
+
+  const columns: Column<Application>[] = [
+    {
+      key: 'id',
+      label: 'Application ID',
+      sortable: true,
+      width: '10%',
+      render: (app) => (
+        <span className="text-sm font-mono font-medium text-secondary-900">
+          #{app.id}
+        </span>
+      ),
+    },
+    {
+      key: 'customerName',
+      label: 'Customer Name',
+      sortable: true,
+      width: '20%',
+      render: (app) => (
+        <span className="text-sm font-medium text-secondary-900">
+          {app.customerName}
+        </span>
+      ),
+    },
+    {
+      key: 'productType',
+      label: 'Product Type',
+      sortable: true,
+      width: '15%',
+      render: (app) => (
+        <span className="text-sm text-secondary-700">{app.productType}</span>
+      ),
+    },
+    {
+      key: 'loanAmount',
+      label: 'Loan Amount',
+      sortable: true,
+      width: '15%',
+      align: 'right',
+      render: (app) => (
+        <span className="text-sm font-semibold text-secondary-900">
+          ₹{app.loanAmount.toLocaleString('en-IN')}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      width: '15%',
+      render: (app) => getStatusBadge(app.status),
+    },
+    {
+      key: 'createdAt',
+      label: 'Created Date',
+      sortable: true,
+      width: '15%',
+      render: (app) => (
+        <span className="text-sm text-secondary-600">
+          {new Date(app.createdAt).toLocaleDateString('en-IN')}
+        </span>
+      ),
+    },
+  ];
+
+  const handleBulkDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmBulkDelete = () => {
+    addToast({
+      type: 'success',
+      message: 'Applications deleted',
+      description: `${selectedRows.size} application(s) have been deleted successfully.`,
+    });
+    setSelectedRows(new Set());
+    setShowDeleteConfirm(false);
+  };
+
+  const handleBulkApprove = () => {
+    addToast({
+      type: 'success',
+      message: 'Applications approved',
+      description: `${selectedRows.size} application(s) have been approved.`,
+    });
+    setSelectedRows(new Set());
+  };
+
+  const handleBulkReject = () => {
+    addToast({
+      type: 'error',
+      message: 'Applications rejected',
+      description: `${selectedRows.size} application(s) have been rejected.`,
+    });
+    setSelectedRows(new Set());
+  };
+
+  const handleExport = () => {
+    const csvContent = [
+      ['ID', 'Customer Name', 'Product Type', 'Loan Amount', 'Status', 'Created Date'],
+      ...filteredApplications.map(app => [
+        app.id,
+        app.customerName,
+        app.productType,
+        app.loanAmount.toString(),
+        app.status,
+        app.createdAt,
+      ]),
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `applications-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+
+    addToast({
+      type: 'success',
+      message: 'Export successful',
+      description: 'Applications data has been exported to CSV.',
+    });
   };
 
   return (
@@ -137,20 +278,43 @@ export default function Applications() {
             <option value="rejected">Rejected</option>
             <option value="disbursed">Disbursed</option>
           </select>
-          <Button variant="outline">
-            <Filter className="mr-2 h-4 w-4" />
-            More Filters
-          </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
         </div>
       </div>
 
-      {loading ? (
-        <SkeletonTable rows={5} />
-      ) : filteredApplications.length === 0 ? (
+      {selectedRows.size > 0 && (
+        <Card className="p-4 bg-primary-50 border-primary-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-medium text-primary-900">
+                {selectedRows.size} selected
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedRows(new Set())}>
+                Clear selection
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="success" size="sm" onClick={handleBulkApprove}>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Approve
+              </Button>
+              <Button variant="error" size="sm" onClick={handleBulkReject}>
+                <XCircle className="mr-2 h-4 w-4" />
+                Reject
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleBulkDelete}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {filteredApplications.length === 0 ? (
         <Card>
           <EmptyState
             icon="search"
@@ -182,101 +346,26 @@ export default function Applications() {
           />
         </Card>
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-secondary-50 border-b border-secondary-200">
-                <tr>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Application ID
-                  </th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Customer Name
-                  </th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Product Type
-                  </th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Loan Amount
-                  </th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="text-left px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Created Date
-                  </th>
-                  <th className="text-right px-6 py-4 text-xs font-semibold text-secondary-600 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-secondary-200 bg-white">
-                {filteredApplications.map((app) => (
-                  <tr
-                    key={app.id}
-                    className="hover:bg-secondary-50 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/applications/${app.id}`)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-mono font-medium text-secondary-900">
-                        #{app.id}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-secondary-900">
-                        {app.customerName}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-secondary-700">{app.productType}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-semibold text-secondary-900">
-                        ₹{app.loanAmount.toLocaleString('en-IN')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(app.status)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-secondary-600">
-                        {new Date(app.createdAt).toLocaleDateString('en-IN')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/applications/${app.id}`);
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-6 py-4 border-t border-secondary-200 bg-secondary-50">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-secondary-600">
-                Showing {filteredApplications.length} of {applications.length} applications
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  Previous
-                </Button>
-                <Button variant="outline" size="sm" disabled>
-                  Next
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
+        <DataTable
+          columns={columns}
+          data={filteredApplications}
+          keyExtractor={(app) => app.id}
+          onRowClick={(app) => navigate(`/applications/${app.id}`)}
+          selectable
+          selectedRows={selectedRows}
+          onSelectionChange={setSelectedRows}
+        />
       )}
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={confirmBulkDelete}
+        title="Delete Applications"
+        message={`Are you sure you want to delete ${selectedRows.size} application(s)? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="error"
+      />
     </div>
   );
 }

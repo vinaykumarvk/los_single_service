@@ -55,6 +55,22 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-secondary-600 bg-secondary-100 hover:bg-secondary-200 rounded-lg transition-colors"
+                onClick={() => {
+                  const event = new KeyboardEvent('keydown', {
+                    key: 'k',
+                    metaKey: true,
+                    bubbles: true,
+                  });
+                  window.dispatchEvent(event);
+                }}
+              >
+                <span>Search</span>
+                <kbd className="px-1.5 py-0.5 text-xs bg-white border border-secondary-300 rounded">
+                  ⌘K
+                </kbd>
+              </button>
               <UserMenu />
             </div>
           </div>
