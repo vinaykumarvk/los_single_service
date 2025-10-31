@@ -58,8 +58,8 @@ export default function Dashboard() {
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-secondary-900 tracking-tight">Dashboard</h1>
-          <p className="text-secondary-600 mt-1">Welcome back! Here's your loan pipeline overview</p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-secondary-900 dark:text-secondary-100 tracking-tight">Dashboard</h1>
+          <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400 mt-1">Welcome back! Here's your loan pipeline overview</p>
         </div>
         <Link to="/applications/new">
           <Button size="lg" className="shadow-lg">
@@ -80,15 +80,15 @@ export default function Dashboard() {
         ) : (
           <>
         <Card className="overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary-400/10 to-primary-600/10 rounded-full -mr-16 -mt-16" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary-400/10 dark:from-primary-600/10 to-primary-600/10 dark:to-primary-800/10 rounded-full -mr-16 -mt-16" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-secondary-600">Total Applications</CardTitle>
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <FileText className="h-5 w-5 text-primary-600" />
+            <CardTitle className="text-sm font-medium text-secondary-600 dark:text-secondary-400">Total Applications</CardTitle>
+            <div className="p-2 bg-primary-100 dark:bg-primary-900/40 rounded-lg">
+              <FileText className="h-5 w-5 text-primary-600 dark:text-primary-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-secondary-900 font-mono">
+            <div className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100 font-mono">
               {loading ? '-' : stats.totalApplications}
             </div>
             <div className="flex items-center gap-2 mt-2">
@@ -102,15 +102,15 @@ export default function Dashboard() {
         </Card>
 
         <Card className="overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-warning-400/10 to-warning-600/10 rounded-full -mr-16 -mt-16" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-warning-400/10 dark:from-warning-600/10 to-warning-600/10 dark:to-warning-800/10 rounded-full -mr-16 -mt-16" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-secondary-600">Pending Review</CardTitle>
-            <div className="p-2 bg-warning-100 rounded-lg">
-              <Clock className="h-5 w-5 text-warning-600" />
+            <CardTitle className="text-sm font-medium text-secondary-600 dark:text-secondary-400">Pending Review</CardTitle>
+            <div className="p-2 bg-warning-100 dark:bg-warning-900/40 rounded-lg">
+              <Clock className="h-5 w-5 text-warning-600 dark:text-warning-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-secondary-900 font-mono">
+            <div className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100 font-mono">
               {loading ? '-' : stats.pendingReview}
             </div>
             <div className="flex items-center gap-2 mt-2">
@@ -124,15 +124,15 @@ export default function Dashboard() {
         </Card>
 
         <Card className="overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-success-400/10 to-success-600/10 rounded-full -mr-16 -mt-16" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-success-400/10 dark:from-success-600/10 to-success-600/10 dark:to-success-800/10 rounded-full -mr-16 -mt-16" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-secondary-600">Total Disbursed</CardTitle>
-            <div className="p-2 bg-success-100 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-success-600" />
+            <CardTitle className="text-sm font-medium text-secondary-600 dark:text-secondary-400">Total Disbursed</CardTitle>
+            <div className="p-2 bg-success-100 dark:bg-success-900/40 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-success-600 dark:text-success-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-secondary-900 font-mono">
+            <div className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100 font-mono">
               {loading ? '-' : stats.totalDisbursed}
             </div>
             <div className="flex items-center gap-2 mt-2">
@@ -146,15 +146,15 @@ export default function Dashboard() {
         </Card>
 
         <Card className="overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-accent-400/10 to-accent-600/10 rounded-full -mr-16 -mt-16" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-accent-400/10 dark:from-accent-600/10 to-accent-600/10 dark:to-accent-800/10 rounded-full -mr-16 -mt-16" />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <CardTitle className="text-sm font-medium text-secondary-600">Avg Processing</CardTitle>
-            <div className="p-2 bg-accent-100 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-accent-600" />
+            <CardTitle className="text-sm font-medium text-secondary-600 dark:text-secondary-400">Avg Processing</CardTitle>
+            <div className="p-2 bg-accent-100 dark:bg-accent-900/40 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-accent-600 dark:text-accent-400" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-secondary-900 font-mono">
+            <div className="text-2xl sm:text-3xl font-bold text-secondary-900 dark:text-secondary-100 font-mono">
               {loading ? '-' : stats.avgProcessingTime}
             </div>
             <div className="flex items-center gap-2 mt-2">

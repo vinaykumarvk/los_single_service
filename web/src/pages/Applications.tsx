@@ -242,8 +242,8 @@ export default function Applications() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-secondary-900 tracking-tight">Applications</h1>
-          <p className="text-secondary-600 mt-1">Manage and track all loan applications</p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-secondary-900 dark:text-secondary-100 tracking-tight">Applications</h1>
+          <p className="text-sm sm:text-base text-secondary-600 dark:text-secondary-400 mt-1">Manage and track all loan applications</p>
         </div>
         <Link to="/applications/new">
           <Button size="lg" className="shadow-lg">
@@ -255,20 +255,20 @@ export default function Applications() {
 
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary-400 dark:text-secondary-500" />
           <input
             type="text"
             placeholder="Search by name or ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
+            className="w-full pl-10 pr-4 py-2.5 border border-secondary-300 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-900 text-secondary-900 dark:text-secondary-100 placeholder-secondary-400 dark:placeholder-secondary-500 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
           />
         </div>
         <div className="flex gap-2">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2.5 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
+            className="px-4 py-2.5 border border-secondary-300 dark:border-secondary-700 rounded-lg bg-white dark:bg-secondary-900 text-secondary-900 dark:text-secondary-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
           >
             <option value="all">All Status</option>
             <option value="draft">Draft</option>
@@ -286,10 +286,10 @@ export default function Applications() {
       </div>
 
       {selectedRows.size > 0 && (
-        <Card className="p-4 bg-primary-50 border-primary-200">
-          <div className="flex items-center justify-between">
+        <Card className="p-4 bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-primary-900">
+              <span className="text-sm font-medium text-primary-900 dark:text-primary-100">
                 {selectedRows.size} selected
               </span>
               <Button variant="ghost" size="sm" onClick={() => setSelectedRows(new Set())}>
