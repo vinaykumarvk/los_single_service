@@ -111,3 +111,4 @@ echo ""
 echo "Deployment complete!"
 echo "View services at: https://console.cloud.google.com/run?project=${PROJECT_ID}"
 
+

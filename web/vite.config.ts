@@ -1,18 +1,47 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Build configurations for different personas
+const persona = process.env.VITE_PERSONA || 'all';
+
+const personaConfigs: Record<string, { entry: string; outDir: string; base: string }> = {
+  rm: {
+    entry: 'src/rm/main.tsx',
+    outDir: 'dist/rm',
+    base: '/rm/',
+  },
+  admin: {
+    entry: 'src/admin/main.tsx',
+    outDir: 'dist/admin',
+    base: '/admin/',
+  },
+  operations: {
+    entry: 'src/operations/main.tsx',
+    outDir: 'dist/operations',
+    base: '/operations/',
+  },
+  all: {
+    entry: 'src/main.tsx',
+    outDir: 'dist',
+    base: '/',
+  },
+};
+
+const buildConfig = personaConfigs[persona] || personaConfigs.all;
+
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5000,
+    port: 5173,
     host: '0.0.0.0',
-    strictPort: true,
+    strictPort: false,
     allowedHosts: true,
-    hmr: {
-      clientPort: 443,
-      protocol: 'wss'
-    }
-  }
+  },
+  build: {
+    outDir: buildConfig.outDir,
+    rollupOptions: {
+      input: buildConfig.entry,
+    },
+  },
+  base: buildConfig.base,
 });
-
-

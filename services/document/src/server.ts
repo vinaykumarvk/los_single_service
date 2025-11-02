@@ -8,7 +8,10 @@ import crypto from 'crypto';
 import { extractDocumentMetadata } from './ocr';
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }); // 15MB max
+// Configurable file size limit (default 15MB, can be set via MAX_FILE_SIZE_MB env var)
+const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '15', 10);
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
 app.use(json());
 app.use(correlationIdMiddleware);
 

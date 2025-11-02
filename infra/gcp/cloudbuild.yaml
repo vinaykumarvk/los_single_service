@@ -259,3 +259,4 @@ images:
   - '${_GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY}/integration-hub:${SHORT_SHA}'
   - '${_GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ARTIFACT_REGISTRY}/integration-hub:latest'
 
+

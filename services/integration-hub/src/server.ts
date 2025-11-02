@@ -20,10 +20,10 @@ app.use(correlationIdMiddleware);
 
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 
-// PAN validation endpoint (using adapter pattern for future NSDL integration)
+// PAN validation endpoint (using adapter pattern with real NSDL integration)
 app.post('/api/integrations/pan/validate', async (req, res) => {
   try {
-    const { pan } = req.body || {};
+    const { pan, applicantName } = req.body || {};
     
     // Basic format validation
     const valid = typeof pan === 'string' && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
@@ -44,15 +44,46 @@ app.post('/api/integrations/pan/validate', async (req, res) => {
       });
     }
     
-    // In production, call NSDL PAN validation API here
-    // const nsdlAdapter = createPANAdapter();
-    // const result = await nsdlAdapter.validate(pan);
+    // Try to use NSDL adapter (will use fallback mode if API key not configured)
+    const useMock = process.env.USE_MOCK_INTEGRATIONS !== 'false';
     
+    if (!useMock) {
+      try {
+        const { NSDLPANAdapter } = await import('./adapters/pan/nsdl');
+        const adapter = new NSDLPANAdapter();
+        const result = await adapter.validate({ pan, applicantName });
+        
+        logger.info('PANValidation', { 
+          correlationId: (req as any).correlationId, 
+          pan: pan?.substring(0, 2) + '****' + pan?.substring(pan.length - 2),
+          valid: result.valid,
+          whitelisted: blacklistCheck.isWhitelisted,
+          provider: 'NSDL',
+          mode: (adapter as any).useFallback ? 'fallback' : 'real'
+        });
+        
+        return res.status(200).json({ 
+          pan, 
+          valid: result.valid,
+          holderName: result.holderName,
+          whitelisted: blacklistCheck.isWhitelisted,
+          providerRef: result.providerRef,
+          status: result.status,
+          note: (adapter as any).useFallback ? 'Dummy response - configure NSDL_PAN_API_KEY for real validation' : undefined
+        });
+      } catch (err) {
+        logger.warn('NSDLPANAdapterError', { error: (err as Error).message });
+        // Fall through to format validation only
+      }
+    }
+    
+    // Format validation only (mock mode)
     logger.info('PANValidation', { 
       correlationId: (req as any).correlationId, 
       pan: pan?.substring(0, 2) + '****' + pan?.substring(pan.length - 2),
       valid,
-      whitelisted: blacklistCheck.isWhitelisted
+      whitelisted: blacklistCheck.isWhitelisted,
+      mode: 'format-only'
     });
     
     return res.status(200).json({ 
@@ -60,7 +91,7 @@ app.post('/api/integrations/pan/validate', async (req, res) => {
       valid: true,
       whitelisted: blacklistCheck.isWhitelisted,
       providerRef: uuidv4(),
-      // In real implementation: holderName, status, etc.
+      note: 'Format validation only. Set USE_MOCK_INTEGRATIONS=false to use adapter fallback mode.'
     });
   } catch (err) {
     logger.error('PANValidationError', { error: (err as Error).message, correlationId: (req as any).correlationId });

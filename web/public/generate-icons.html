@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate PWA Icons</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      margin: 10px;
+      display: block;
+    }
+    button {
+      background: #0ea5e9;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #0369a1;
+    }
+    .instructions {
+      background: #f0f9ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎨 PWA Icon Generator</h1>
+  <p>Generate PNG icons for the Loan Origination System PWA.</p>
+  
+  <div class="instructions">
+    <h3>Instructions:</h3>
+    <ol>
+      <li>Click "Generate Icons" to create the icons</li>
+      <li>Right-click each icon below and "Save Image As..."</li>
+      <li>Save as <code>icon-192.png</code> and <code>icon-512.png</code></li>
+      <li>Place them in the <code>web/public/</code> directory</li>
+    </ol>
+  </div>
+
+  <button onclick="generateIcons()">Generate Icons</button>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    function createIcon(size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Create gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#0ea5e9');
+      gradient.addColorStop(1, '#0369a1');
+
+      // Draw rounded rectangle
+      const radius = size * 0.2;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(size - radius, 0);
+      ctx.quadraticCurveTo(size, 0, size, radius);
+      ctx.lineTo(size, size - radius);
+      ctx.quadraticCurveTo(size, size, size - radius, size);
+      ctx.lineTo(radius, size);
+      ctx.quadraticCurveTo(0, size, 0, size - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw text
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${Math.round(size * 0.4)}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LOS', size / 2, size / 2);
+
+      // For 512px, add subtitle
+      if (size === 512) {
+        ctx.font = `${Math.round(size * 0.08)}px Inter, system-ui, sans-serif`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fillText('Loan Origination', size / 2, size / 2 + size * 0.15);
+      }
+
+      return canvas;
+    }
+
+    function generateIcons() {
+      const container = document.getElementById('canvas-container');
+      container.innerHTML = '';
+
+      // Generate 192x192
+      const icon192 = createIcon(192);
+      const div192 = document.createElement('div');
+      div192.innerHTML = '<h3>192x192 Icon</h3>';
+      div192.appendChild(icon192);
+      const link192 = document.createElement('a');
+      link192.href = icon192.toDataURL('image/png');
+      link192.download = 'icon-192.png';
+      link192.textContent = 'Download icon-192.png';
+      link192.style.display = 'block';
+      link192.style.marginTop = '10px';
+      link192.style.color = '#0ea5e9';
+      div192.appendChild(link192);
+      container.appendChild(div192);
+
+      // Generate 512x512
+      const icon512 = createIcon(512);
+      const div512 = document.createElement('div');
+      div512.innerHTML = '<h3>512x512 Icon</h3>';
+      div512.appendChild(icon512);
+      const link512 = document.createElement('a');
+      link512.href = icon512.toDataURL('image/png');
+      link512.download = 'icon-512.png';
+      link512.textContent = 'Download icon-512.png';
+      link512.style.display = 'block';
+      link512.style.marginTop = '10px';
+      link512.style.color = '#0ea5e9';
+      div512.appendChild(link512);
+      container.appendChild(div512);
+
+      // Auto-download
+      link192.click();
+      setTimeout(() => link512.click(), 500);
+    }
+
+    // Auto-generate on load
+    window.addEventListener('load', () => {
+      setTimeout(generateIcons, 500);
+    });
+  </script>
+</body>
+</html>
+

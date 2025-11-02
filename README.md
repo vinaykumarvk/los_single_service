@@ -1,77 +1,180 @@
-LOS Monorepo (Microservices)
+# Loan Origination System (LoS)
 
-Structure:
-- gateway/ (API Gateway & BFF)
-- services/ (domain microservices)
-- shared/ (schemas, libs)
-- web/ (React UI)
-- infra/ (Helm/K8s, CI, Docker Compose)
-- reporting/ (read models, exports)
+A comprehensive, enterprise-grade Loan Origination System built with microservices architecture, featuring relationship manager dashboards, hierarchical reporting, and advanced analytics.
 
-Use pnpm workspaces. Run `pnpm -w install` after cloning.
+## 🏗️ Architecture
 
-Quick start (local dev):
+- **Microservices**: 15+ independent services
+- **Event-Driven**: Kafka-based event streaming with Outbox Pattern
+- **API Gateway**: Centralized routing with authentication
+- **Database**: PostgreSQL (database per service)
+- **Frontend**: React.js with TypeScript
+- **Authentication**: Keycloak SSO integration
 
-1. Start infrastructure:
-   ```bash
-   cd infra
-   docker compose up -d
-   ```
+## 🚀 Key Features
 
-2. Setup databases (create schemas and seed):
-   ```bash
-   # From project root, run schema migrations per service
-   psql -U los -d los -f services/masters/schema.sql
-   psql -U los -d los -f services/application/schema.sql
-   psql -U los -d los -f services/customer-kyc/schema.sql
-   psql -U los -d los -f services/document/schema.sql
-   psql -U los -d los -f services/orchestrator/schema.sql
-   psql -U los -d los -f infra/seed.sql
-   ```
+### Core Functionality
+- ✅ Application lifecycle management (Draft → Submitted → Approved/Rejected)
+- ✅ KYC (Know Your Customer) verification
+- ✅ Document management with OCR
+- ✅ Underwriting with rule engine
+- ✅ Sanction screening
+- ✅ Payment processing
+- ✅ Disbursement management
 
-3. Install dependencies:
-   ```bash
-   pnpm -w install
-   ```
+### Advanced Features
+- ✅ **Hierarchical Dashboards**: RM, SRM, and Regional Head dashboards with drill-down
+- ✅ **Dynamic Aggregation**: Runtime computation based on reporting hierarchy
+- ✅ **AI/ML Scoring**: Flexible credit scoring (internal ML or third-party integration)
+- ✅ **Advanced Analytics**: Custom reports, predictive analytics, portfolio risk analysis
+- ✅ **Mobile Optimization**: Progressive Web App (PWA) with offline support
+- ✅ **Role-Based Access Control**: Persona-based access (RM, Admin, Operations)
+- ✅ **Data Entitlements**: RMs can only access assigned customers
 
-4. Start services (in separate terminals, or use Makefile):
-   ```bash
-   # Gateway (port 3000)
-   cd gateway && pnpm dev
-   
-   # Core services
-   cd services/application && pnpm dev
-   cd services/customer-kyc && pnpm dev
-   cd services/document && pnpm dev
-   cd services/masters && pnpm dev
-   cd services/underwriting && pnpm dev
-   cd services/sanction-offer && pnpm dev
-   cd services/payments && pnpm dev
-   cd services/disbursement && pnpm dev
-   cd services/orchestrator && pnpm dev
-   cd services/integration-hub && pnpm dev
-   cd services/bureau && pnpm dev
-   cd services/verification && pnpm dev
-   cd services/notifications && pnpm dev
-   cd services/audit && pnpm dev
-   cd reporting && pnpm dev
-   ```
-   
-   Or use Makefile shortcuts:
-   ```bash
-   make install    # Install dependencies
-   make infra-up   # Start Docker services
-   make db-setup   # Run migrations and seed
-   ```
+## 📋 Prerequisites
 
-5. Keycloak setup (optional):
-   - Access http://localhost:8080 (admin/admin)
-   - Import realm from `infra/keycloak-realm.json` (or create manually)
-   - Create users: maker1, checker1, admin1 (passwords match usernames)
+- Node.js 18+ and pnpm
+- PostgreSQL 14+
+- Docker & Docker Compose
+- Keycloak (for authentication)
 
-Environment variables (per service):
-- `DATABASE_URL=postgres://los:los@localhost:5432/los`
-- `KAFKA_BROKERS=localhost:19092` (for orchestrator)
-- `KEYCLOAK_ISSUER_URL=http://localhost:8080/realms/los`
-- `KEYCLOAK_JWKS_URI=http://localhost:8080/realms/los/protocol/openid-connect/certs`
-- `KEYCLOAK_CLIENT_ID=los-ui`
+## 🛠️ Installation
+
+### Quick Start
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start infrastructure (PostgreSQL, Kafka, Keycloak)
+docker-compose -f infra/docker-compose.prod.yml up -d
+
+# Run database migrations
+pnpm run migrate
+
+# Start all services
+./scripts/start-all-services.sh
+```
+
+### Local Development
+
+See [LOCAL_DEVELOPMENT_GUIDE.md](./LOCAL_DEVELOPMENT_GUIDE.md) for detailed setup instructions.
+
+## 📁 Project Structure
+
+```
+├── services/          # Microservices
+│   ├── auth/         # Authentication service
+│   ├── application/   # Application management
+│   ├── kyc/          # KYC verification
+│   ├── document/     # Document management
+│   ├── underwriting/  # Underwriting decisions
+│   ├── scoring/      # AI/ML scoring
+│   ├── analytics/    # Advanced analytics
+│   └── ...
+├── gateway/          # API Gateway
+├── web/             # React frontend
+├── shared/          # Shared libraries
+└── infra/           # Infrastructure configs
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Copy `infra/env.prod.template` to `.env` and configure:
+
+```bash
+DATABASE_URL=postgres://user:password@localhost:5432/los
+KAFKA_BROKERS=localhost:9092
+KEYCLOAK_URL=http://localhost:8080
+# ... other service URLs
+```
+
+## 🧪 Testing
+
+### Run All Tests
+```bash
+pnpm test
+```
+
+### Functional Tests
+```bash
+./scripts/comprehensive-functional-tests.sh
+```
+
+### Edge Case Tests
+```bash
+./scripts/edge-case-tests.sh
+```
+
+## 📊 API Documentation
+
+### Main Endpoints
+
+- **Applications**: `GET /api/applications`, `POST /api/applications`
+- **RM Dashboard**: `GET /api/dashboard/rm/:userId`
+- **SRM Dashboard**: `GET /api/dashboard/srm/:srmId?includeReportees=true`
+- **Regional Head**: `GET /api/dashboard/regional-head/:headId?includeReportees=true`
+- **Hierarchy Drill-down**: `GET /api/hierarchy/reportees/:managerId`
+
+See individual service READMEs for detailed API documentation.
+
+## 🔐 Security Features
+
+- ✅ JWT-based authentication
+- ✅ Role-based access control (RBAC)
+- ✅ Data entitlements (RM access control)
+- ✅ PII masking and encryption
+- ✅ SQL injection prevention (parameterized queries)
+- ✅ Input validation (Zod schemas)
+- ✅ UUID format validation
+
+## 📈 Production Deployment
+
+### Using Docker Compose
+
+```bash
+docker-compose -f infra/docker-compose.prod.yml up -d
+```
+
+### Kubernetes (Optional)
+
+Helm charts available in `infra/helm/`
+
+## 🧹 Maintenance
+
+### Cleanup Script
+```bash
+./CLEANUP_SCRIPT.sh
+```
+
+### Database Migrations
+```bash
+pnpm run migrate
+```
+
+## 📚 Documentation
+
+- [Local Development Guide](./LOCAL_DEVELOPMENT_GUIDE.md)
+- [Deployment Guide](./DEPLOYMENT_READY.md)
+- [API Documentation](./API_DOCUMENTATION.md) (if available)
+
+## 🤝 Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Run tests: `pnpm test`
+4. Submit a pull request
+
+## 📝 License
+
+[Your License Here]
+
+## 🆘 Support
+
+For issues and questions, please open an issue in the GitHub repository.
+
+---
+
+**Built with**: TypeScript, Node.js, React, PostgreSQL, Kafka, Docker

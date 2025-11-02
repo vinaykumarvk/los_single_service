@@ -22,3 +22,4 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate && \
 EXPOSE 3013
 CMD ["node", "services/bureau/dist/server.js"]
 
+

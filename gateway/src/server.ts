@@ -68,6 +68,20 @@ app.get('/metrics', metricsHandler);
 // GET /api/user/roles - get user roles and UI permissions
 app.get('/api/user/roles', requireAuth, getUserRolesHandler);
 
+// Authentication routes (public endpoints, no auth required)
+app.use('/auth', createProxyMiddleware({ 
+  target: 'http://localhost:3016', 
+  changeOrigin: true, 
+  pathRewrite: { '^/auth': '' } 
+}));
+
+// Leads/Sourcing routes
+app.use('/leads', requireAuth, createProxyMiddleware({ 
+  target: 'http://localhost:3017', 
+  changeOrigin: true, 
+  pathRewrite: { '^/leads': '' } 
+}));
+
 // Service routing with rate limiting by operation type
 // Write operations (POST, PUT, PATCH, DELETE) - stricter limits
 app.use('/application', requireAuth, (req, res, next) => {
@@ -75,7 +89,20 @@ app.use('/application', requireAuth, (req, res, next) => {
     return writeLimiter(req, res, next);
   }
   next();
-}, createProxyMiddleware({ target: 'http://localhost:3001', changeOrigin: true, pathRewrite: { '^/application': '' } }));
+}, createProxyMiddleware({ 
+  target: 'http://localhost:3001', 
+  changeOrigin: true, 
+  pathRewrite: { '^/application': '' },
+  onProxyReq: (proxyReq, req) => {
+    // Forward user information to backend services for access control
+    const user: any = (req as any).user;
+    if (user) {
+      proxyReq.setHeader('X-User-Id', user.sub || user.id || '');
+      proxyReq.setHeader('X-User-Roles', JSON.stringify(user.realm_access?.roles || []));
+      proxyReq.setHeader('X-User-Email', user.email || '');
+    }
+  }
+}));
 
 app.use('/kyc', requireAuth, (req, res, next) => {
   if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
@@ -120,6 +147,36 @@ app.use('/disbursement', requireAuth, (req, res, next) => {
 }, createProxyMiddleware({ target: 'http://localhost:3009', changeOrigin: true, pathRewrite: { '^/disbursement': '' } }));
 
 app.use('/reporting', requireAuth, createProxyMiddleware({ target: 'http://localhost:3015', changeOrigin: true, pathRewrite: { '^/reporting': '' } }));
+
+// Scoring Service (new)
+app.use('/scoring', requireAuth, createProxyMiddleware({ 
+  target: 'http://localhost:3018', 
+  changeOrigin: true, 
+  pathRewrite: { '^/scoring': '' },
+  onProxyReq: (proxyReq, req) => {
+    // Forward user information for access control
+    const user: any = (req as any).user;
+    if (user) {
+      proxyReq.setHeader('X-User-Id', user.sub || user.id || '');
+      proxyReq.setHeader('X-User-Roles', JSON.stringify(user.realm_access?.roles || []));
+    }
+  }
+}));
+
+// Analytics Service (new)
+app.use('/analytics', requireAuth, createProxyMiddleware({ 
+  target: 'http://localhost:3019', 
+  changeOrigin: true, 
+  pathRewrite: { '^/analytics': '' },
+  onProxyReq: (proxyReq, req) => {
+    // Forward user information for access control
+    const user: any = (req as any).user;
+    if (user) {
+      proxyReq.setHeader('X-User-Id', user.sub || user.id || '');
+      proxyReq.setHeader('X-User-Roles', JSON.stringify(user.realm_access?.roles || []));
+    }
+  }
+}));
 app.use('/notifications', requireAuth, (req, res, next) => {
   if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
     return writeLimiter(req, res, next);

@@ -492,6 +492,62 @@ services:
     networks:
       - los-network
 
+  scoring:
+    build:
+      context: ..
+      dockerfile: services/scoring/Dockerfile
+    container_name: los-scoring-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3018
+      SCORING_SERVICE_URL: http://scoring:3018
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      # Third-party provider configs (optional)
+      EXPERIAN_SCORING_API_URL: ${EXPERIAN_SCORING_API_URL:-}
+      EXPERIAN_API_KEY: ${EXPERIAN_API_KEY:-}
+      EQUIFAX_SCORING_API_URL: ${EQUIFAX_SCORING_API_URL:-}
+      EQUIFAX_API_KEY: ${EQUIFAX_API_KEY:-}
+      FICO_SCORING_API_URL: ${FICO_SCORING_API_URL:-}
+      FICO_API_KEY: ${FICO_API_KEY:-}
+      CUSTOM_SCORING_API_URL: ${CUSTOM_SCORING_API_URL:-}
+      CUSTOM_SCORING_API_KEY: ${CUSTOM_SCORING_API_KEY:-}
+    ports:
+      - "${SCORING_PORT:-3018}:3018"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3018/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
+  analytics:
+    build:
+      context: ..
+      dockerfile: services/analytics/Dockerfile
+    container_name: los-analytics-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3019
+      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+    ports:
+      - "${ANALYTICS_PORT:-3019}:3019"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3019/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - los-network
+
 volumes:
   pgdata:
   redpanda:
@@ -500,4 +556,5 @@ volumes:
 networks:
   los-network:
     driver: bridge
+
 

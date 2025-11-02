@@ -40,14 +40,14 @@ export function setupApplicationSSE(req: Request, res: Response, pool: Pool): vo
   pool.query(
     'SELECT application_id, status, updated_at FROM applications WHERE application_id = $1',
     [applicationId]
-  ).then(({ rows }) => {
+  ).then(({ rows }: { rows: Array<{ application_id: string; status: string; updated_at: Date }> }) => {
     if (rows.length > 0) {
       res.write(`id: ${Date.now()}\n`);
       res.write(`event: status\n`);
       res.write(`data: ${JSON.stringify({ applicationId, status: rows[0].status, updatedAt: rows[0].updated_at })}\n\n`);
     }
-  }).catch(err => {
-    logger.warn('SSEFetchError', { error: (err as Error).message, applicationId });
+  }).catch((err: Error) => {
+    logger.warn('SSEFetchError', { error: err.message, applicationId });
   });
   
   // Handle client disconnect

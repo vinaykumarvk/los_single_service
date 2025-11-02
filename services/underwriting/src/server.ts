@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { createPgPool, correlationIdMiddleware, createLogger } from '@los/shared-libs';
 import { evaluateRules, RuleContext } from './rule-engine';
+import { getScoring, enhanceDecisionWithScoring } from './scoring-integration';
 
 const pool = createPgPool();
 const logger = createLogger('underwriting-service');
@@ -124,13 +125,70 @@ app.post('/api/applications/:id/underwrite', async (req, res) => {
       ltv: ltv !== undefined ? +ltv.toFixed(4) : null,
       ageAtMaturity: +ageAtMaturity.toFixed(2),
       proposedEmi,
-      creditScore: creditScore || null
+      creditScore: creditScore || null,
+      scoringResult: scoringResult ? {
+        score: scoringResult.score,
+        riskLevel: scoringResult.riskLevel,
+        provider: scoringResult.providerUsed
+      } : null
     };
   }
 
   let decision: 'AUTO_APPROVE' | 'REFER' | 'DECLINE' = 'AUTO_APPROVE';
   if (reasons.length >= 2) decision = 'DECLINE';
   else if (reasons.length === 1) decision = 'REFER';
+
+  // Get AI/ML scoring to enhance decision
+  let scoringResult = null;
+  let enhancedDecision = decision;
+  let enhancedReasons = reasons;
+  let scoringEnhancement: any = null;
+
+  try {
+    // Call scoring service (with fallback to internal ML)
+    const scoringProvider = req.query.scoringProvider as string || 'INTERNAL_ML';
+    const { getScoring, enhanceDecisionWithScoring } = await import('./scoring-integration');
+    
+    scoringResult = await getScoring(
+      req.params.id,
+      {
+        applicantId: parsed.data.applicantId || '',
+        monthlyIncome,
+        existingEmi,
+        proposedAmount,
+        tenureMonths,
+        annualRate,
+        propertyValue,
+        applicantAgeYears,
+        creditScore,
+        employmentType: parsed.data.employmentType,
+        employmentTenure: parsed.data.employmentTenure,
+        bankingRelationship: parsed.data.bankingRelationship,
+        previousDefaults: parsed.data.previousDefaults,
+        channel,
+        productCode
+      },
+      scoringProvider
+    );
+
+    if (scoringResult) {
+      const enhanced = enhanceDecisionWithScoring(decision, scoringResult, reasons);
+      enhancedDecision = enhanced.decision;
+      enhancedReasons = enhanced.reasons;
+      scoringEnhancement = enhanced.scoringEnhancement;
+    }
+  } catch (err) {
+    logger.warn('ScoringIntegrationError', {
+      error: (err as Error).message,
+      applicationId: req.params.id,
+      correlationId: (req as any).correlationId
+    });
+    // Continue with rule-based decision if scoring fails
+  }
+
+  // Use enhanced decision if available, otherwise use rule-based decision
+  decision = enhancedDecision;
+  reasons = enhancedReasons;
 
   const decisionId = uuidv4();
   const evaluatedBy = (req as any).user?.id || (req as any).user?.sub || 'system';
@@ -159,9 +217,20 @@ app.post('/api/applications/:id/underwrite', async (req, res) => {
 
     return res.status(200).json({
       decisionId,
-      decision,
-      reasons,
-      metrics
+      decision: enhancedDecision,
+      reasons: enhancedReasons,
+      metrics: {
+        ...metrics,
+        ...(scoringEnhancement && {
+          scoringResult: {
+            score: scoringEnhancement.score,
+            riskLevel: scoringEnhancement.riskLevel,
+            recommendation: scoringEnhancement.recommendation,
+            provider: scoringEnhancement.provider
+          }
+        })
+      },
+      ...(scoringEnhancement && { scoringEnhancement })
     });
   } catch (err) {
     await client.query('ROLLBACK');

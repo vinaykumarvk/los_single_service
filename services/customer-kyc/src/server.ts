@@ -23,54 +23,109 @@ app.get('/api/applicants/:id', async (req, res) => {
       return res.status(400).json({ error: 'Invalid UUID format' });
     }
     
-    const { rows } = await pool.query(
-      `SELECT 
-         applicant_id, first_name, middle_name, last_name, dob, gender, father_name, mother_name,
-         marital_status, mobile, email, pan, aadhaar_masked, kyc_status,
-         address_line1, address_line2, city, state, pincode, country,
-         occupation, employer_name, employment_type, monthly_income, existing_emi,
-         co_applicant_id, is_co_applicant,
-         created_at, updated_at
-       FROM applicants 
-       WHERE applicant_id = $1`,
-      [req.params.id]
-    );
-    if (rows.length === 0) return res.status(404).json({ error: 'Applicant not found' });
+    let rows;
+    try {
+      const result = await pool.query(
+        `SELECT 
+           applicant_id, first_name, middle_name, last_name, 
+           date_of_birth, 
+           date_of_birth as dob, gender, father_name, mother_name,
+           marital_status, mobile, email, pan, aadhaar_masked, kyc_status,
+           address_line1, address_line2, city, state, pincode, country,
+           occupation, employer_name, employment_type, monthly_income, existing_emi,
+           other_income_sources, years_in_job,
+           bank_account_number, bank_ifsc, bank_account_holder_name, bank_verified, bank_verification_method, bank_verified_at,
+           co_applicant_id, is_co_applicant,
+           created_at, updated_at
+         FROM applicants 
+         WHERE applicant_id = $1`,
+        [req.params.id]
+      );
+      rows = result.rows;
+    } catch (queryErr: any) {
+      // Log the query error for debugging
+      logger.error('GetApplicantQueryError', { 
+        error: queryErr?.message, 
+        code: queryErr?.code,
+        stack: queryErr?.stack,
+        correlationId: (req as any).correlationId 
+      });
+      // Re-throw to be caught by outer catch - let normal error handling deal with it
+      throw queryErr;
+    }
+    
+    // Check if applicant exists - return 404 if not found
+    if (!rows || rows.length === 0) {
+      logger.debug('ApplicantNotFound', { applicantId: req.params.id, correlationId: (req as any).correlationId });
+      return res.status(404).json({ error: 'Applicant not found' });
+    }
     
     // Decrypt sensitive fields before returning (masking will happen in gateway if needed)
     const applicant = rows[0];
-    if (applicant.pan) {
-      applicant.pan = decryptPAN(applicant.pan);
+    try {
+      if (applicant.pan) {
+        applicant.pan = decryptPAN(applicant.pan);
+      }
+      if (applicant.aadhaar_masked) {
+        applicant.aadhaar_masked = decryptAadhaar(applicant.aadhaar_masked);
+      }
+      if (applicant.email) {
+        applicant.email = decryptEmail(applicant.email);
+      }
+      if (applicant.mobile) {
+        applicant.mobile = decryptMobile(applicant.mobile);
+      }
+      if (applicant.address_line1) {
+        applicant.address_line1 = decryptAddress(applicant.address_line1);
+      }
+      if (applicant.address_line2) {
+        applicant.address_line2 = decryptAddress(applicant.address_line2);
+      }
+      if (applicant.city) {
+        applicant.city = decryptAddress(applicant.city);
+      }
+      if (applicant.state) {
+        applicant.state = decryptAddress(applicant.state);
+      }
+      if (applicant.pincode) {
+        applicant.pincode = decryptAddress(applicant.pincode);
+      }
+      if (applicant.bank_account_number) {
+        applicant.bank_account_number = decryptAddress(applicant.bank_account_number);
+      }
+    } catch (decryptErr) {
+      // Log decryption errors but don't fail the request - return partial data
+      logger.warn('GetApplicantDecryptError', { 
+        error: (decryptErr as Error).message,
+        applicantId: req.params.id,
+        correlationId: (req as any).correlationId 
+      });
     }
-    if (applicant.aadhaar_masked) {
-      applicant.aadhaar_masked = decryptAadhaar(applicant.aadhaar_masked);
+    
+    // Transform response to use date_of_birth instead of dob for frontend
+    const transformed: any = { ...applicant };
+    // Ensure date_of_birth is returned (frontend expects this)
+    if (!transformed.date_of_birth && transformed.dob) {
+      transformed.date_of_birth = transformed.dob;
     }
-    if (applicant.email) {
-      applicant.email = decryptEmail(applicant.email);
-    }
-    if (applicant.mobile) {
-      applicant.mobile = decryptMobile(applicant.mobile);
-    }
-    if (applicant.address_line1) {
-      applicant.address_line1 = decryptAddress(applicant.address_line1);
-    }
-    if (applicant.address_line2) {
-      applicant.address_line2 = decryptAddress(applicant.address_line2);
-    }
-    if (applicant.city) {
-      applicant.city = decryptAddress(applicant.city);
-    }
-    if (applicant.state) {
-      applicant.state = decryptAddress(applicant.state);
-    }
-    if (applicant.pincode) {
-      applicant.pincode = decryptAddress(applicant.pincode);
+    // Keep dob for backward compatibility
+    if (!transformed.dob && transformed.date_of_birth) {
+      transformed.dob = transformed.date_of_birth;
     }
     
     logger.debug('GetApplicant', { correlationId: (req as any).correlationId, applicantId: req.params.id });
-    return res.status(200).json(applicant);
-  } catch (err) {
-    logger.error('GetApplicantError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(200).json(transformed);
+  } catch (err: any) {
+    // Only return 500 for actual server errors, not "not found" cases
+    logger.error('GetApplicantError', { 
+      error: err?.message, 
+      stack: err?.stack,
+      correlationId: (req as any).correlationId 
+    });
+    // If the error indicates "not found" scenario, return 404
+    if (err?.message?.includes('not found') || err?.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Applicant not found' });
+    }
     return res.status(500).json({ error: 'Failed to fetch applicant' });
   }
 });
@@ -80,6 +135,7 @@ const ApplicantSchema = z.object({
   middleName: z.string().max(200).optional(),
   lastName: z.string().min(2).max(200).optional(),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // Accept both dob and dateOfBirth
   gender: z.enum(['Male', 'Female', 'Other', 'PreferNotToSay']).optional(),
   fatherName: z.string().max(200).optional(),
   motherName: z.string().max(200).optional(),
@@ -98,12 +154,33 @@ const ApplicantSchema = z.object({
   // Employment fields
   occupation: z.string().max(200).optional(),
   employerName: z.string().max(200).optional(),
-  employmentType: z.enum(['Salaried', 'SelfEmployed', 'Business', 'Retired', 'Student', 'Unemployed']).optional(),
+  employmentType: z.enum(['Salaried', 'Self-employed', 'SelfEmployed', 'Business', 'Retired', 'Student', 'Unemployed']).optional(), // Accept both Self-employed and SelfEmployed
   monthlyIncome: z.number().min(0).optional(),
   existingEmi: z.number().min(0).optional(),
+  otherIncomeSources: z.string().max(500).optional(),
+  yearsInJob: z.number().min(0).max(50).optional(),
+  // Bank fields
+  bankAccountNumber: z.string().optional(),
+  bankIfsc: z.string().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/).optional(),
+  bankAccountHolderName: z.string().max(200).optional(),
+  bankVerified: z.boolean().optional(),
+  bankVerificationMethod: z.enum(['name_match', 'penny_drop', 'manual']).optional(),
+  bankVerifiedAt: z.string().optional(),
   // Co-applicant
   coApplicantId: z.string().uuid().optional(),
   isCoApplicant: z.boolean().optional()
+}).transform((data) => {
+  // Transform data to match backend schema
+  const transformed: any = { ...data };
+  // Map dateOfBirth to dob
+  if (data.dateOfBirth && !data.dob) {
+    transformed.dob = data.dateOfBirth;
+  }
+  // Map Self-employed to SelfEmployed
+  if (data.employmentType === 'Self-employed') {
+    transformed.employmentType = 'SelfEmployed';
+  }
+  return transformed;
 });
 
 // PUT /api/applicants/:id - upsert applicant
@@ -128,21 +205,26 @@ app.put('/api/applicants/:id', async (req, res) => {
     const encryptedState = parsed.data.state ? encryptAddress(parsed.data.state) : null;
     const encryptedPincode = parsed.data.pincode ? encryptAddress(parsed.data.pincode) : null;
 
+    // Use date_of_birth if column exists, otherwise use dob
+    const dobField = 'date_of_birth'; // Use consistent field name
+    
     // Upsert applicant
     await client.query(
       `INSERT INTO applicants (
-         applicant_id, first_name, middle_name, last_name, dob, gender, father_name, mother_name,
+         applicant_id, first_name, middle_name, last_name, date_of_birth, gender, father_name, mother_name,
          marital_status, mobile, email, pan, aadhaar_masked,
          address_line1, address_line2, city, state, pincode, country,
          occupation, employer_name, employment_type, monthly_income, existing_emi,
+         other_income_sources, years_in_job,
+         bank_account_number, bank_ifsc, bank_account_holder_name, bank_verified, bank_verification_method, bank_verified_at,
          co_applicant_id, is_co_applicant
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
        ON CONFLICT (applicant_id) DO UPDATE SET
          first_name = COALESCE(EXCLUDED.first_name, applicants.first_name),
          middle_name = COALESCE(EXCLUDED.middle_name, applicants.middle_name),
          last_name = COALESCE(EXCLUDED.last_name, applicants.last_name),
-         dob = COALESCE(EXCLUDED.dob, applicants.dob),
+         date_of_birth = COALESCE(EXCLUDED.date_of_birth, applicants.date_of_birth),
          gender = COALESCE(EXCLUDED.gender, applicants.gender),
          father_name = COALESCE(EXCLUDED.father_name, applicants.father_name),
          mother_name = COALESCE(EXCLUDED.mother_name, applicants.mother_name),
@@ -162,6 +244,14 @@ app.put('/api/applicants/:id', async (req, res) => {
          employment_type = COALESCE(EXCLUDED.employment_type, applicants.employment_type),
          monthly_income = COALESCE(EXCLUDED.monthly_income, applicants.monthly_income),
          existing_emi = COALESCE(EXCLUDED.existing_emi, applicants.existing_emi),
+         other_income_sources = COALESCE(EXCLUDED.other_income_sources, applicants.other_income_sources),
+         years_in_job = COALESCE(EXCLUDED.years_in_job, applicants.years_in_job),
+         bank_account_number = COALESCE(EXCLUDED.bank_account_number, applicants.bank_account_number),
+         bank_ifsc = COALESCE(EXCLUDED.bank_ifsc, applicants.bank_ifsc),
+         bank_account_holder_name = COALESCE(EXCLUDED.bank_account_holder_name, applicants.bank_account_holder_name),
+         bank_verified = COALESCE(EXCLUDED.bank_verified, applicants.bank_verified),
+         bank_verification_method = COALESCE(EXCLUDED.bank_verification_method, applicants.bank_verification_method),
+         bank_verified_at = COALESCE(EXCLUDED.bank_verified_at, applicants.bank_verified_at),
          co_applicant_id = COALESCE(EXCLUDED.co_applicant_id, applicants.co_applicant_id),
          is_co_applicant = COALESCE(EXCLUDED.is_co_applicant, applicants.is_co_applicant),
          updated_at = now()`,
@@ -170,7 +260,7 @@ app.put('/api/applicants/:id', async (req, res) => {
         parsed.data.firstName,
         parsed.data.middleName,
         parsed.data.lastName,
-        parsed.data.dob,
+        parsed.data.dob || parsed.data.dateOfBirth,
         parsed.data.gender,
         parsed.data.fatherName,
         parsed.data.motherName,
@@ -190,6 +280,14 @@ app.put('/api/applicants/:id', async (req, res) => {
         parsed.data.employmentType,
         parsed.data.monthlyIncome,
         parsed.data.existingEmi,
+        parsed.data.otherIncomeSources,
+        parsed.data.yearsInJob,
+        parsed.data.bankAccountNumber ? encryptAddress(parsed.data.bankAccountNumber) : null,
+        parsed.data.bankIfsc,
+        parsed.data.bankAccountHolderName,
+        parsed.data.bankVerified || false,
+        parsed.data.bankVerificationMethod,
+        parsed.data.bankVerifiedAt ? new Date(parsed.data.bankVerifiedAt) : null,
         parsed.data.coApplicantId,
         parsed.data.isCoApplicant || false
       ]

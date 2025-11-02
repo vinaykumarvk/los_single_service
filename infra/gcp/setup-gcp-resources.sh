@@ -209,3 +209,4 @@ echo "3. Build and deploy services:"
 echo "   gcloud builds submit --config=infra/gcp/cloudbuild.yaml"
 echo "   ./infra/gcp/deploy-services.sh all ${REGION} ${PROJECT_ID}"
 
+

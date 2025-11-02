@@ -2,7 +2,9 @@ import 'dotenv/config';
 import express from 'express';
 import { json } from 'express';
 import cors from 'cors';
+import { z } from 'zod';
 import { correlationIdMiddleware, createLogger, createPgPool } from '@los/shared-libs';
+import { predictApprovalRate, predictApplicationVolume, buildCustomReport, analyzePortfolioRisk } from './advanced-analytics';
 
 const app = express();
 const logger = createLogger('reporting-service');

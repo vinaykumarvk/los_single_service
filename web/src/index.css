@@ -35,6 +35,33 @@
   body {
     @apply bg-secondary-50 dark:bg-secondary-900 text-secondary-900 dark:text-secondary-50 antialiased transition-colors duration-200;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    /* Mobile optimizations */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Prevent horizontal scroll on mobile */
+    overflow-x: hidden;
+    /* Safe area insets for notched devices */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Touch target optimization for mobile */
+  button, a, input, select, textarea {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Mobile-first responsive typography */
+  @media (max-width: 640px) {
+    h1 {
+      @apply text-3xl;
+    }
+    h2 {
+      @apply text-2xl;
+    }
+    h3 {
+      @apply text-xl;
+    }
   }
   
   h1, h2, h3, h4, h5, h6 {

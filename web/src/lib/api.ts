@@ -1,7 +1,17 @@
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_GATEWAY 
-  ? `${import.meta.env.VITE_API_GATEWAY}/api`
+  ? {
+      // When using gateway, routes are: /application, /kyc, /document, etc.
+      application: `${import.meta.env.VITE_API_GATEWAY}/application/api`,
+      kyc: `${import.meta.env.VITE_API_GATEWAY}/kyc/api`,
+      document: `${import.meta.env.VITE_API_GATEWAY}/document/api`,
+      underwriting: `${import.meta.env.VITE_API_GATEWAY}/underwriting/api`,
+      sanction: `${import.meta.env.VITE_API_GATEWAY}/sanction/api`,
+      payments: `${import.meta.env.VITE_API_GATEWAY}/payments/api`,
+      disbursement: `${import.meta.env.VITE_API_GATEWAY}/disbursement/api`,
+      reporting: `${import.meta.env.VITE_API_GATEWAY}/reporting/api`,
+    }
   : {
       application: import.meta.env.VITE_API_APPLICATION || 'http://localhost:3001/api',
       kyc: import.meta.env.VITE_API_KYC || 'http://localhost:3002/api',
@@ -32,27 +42,16 @@ function getClient(base: string) {
   return client;
 }
 
-const api = typeof API_BASE === 'string'
-  ? {
-      application: getClient(`${API_BASE}/applications`),
-      kyc: getClient(`${API_BASE}/applicants`),
-      document: getClient(`${API_BASE}/applications`),
-      underwriting: getClient(`${API_BASE}/applications`),
-      sanction: getClient(`${API_BASE}/applications`),
-      payments: getClient(`${API_BASE}/applications`),
-      disbursement: getClient(`${API_BASE}/applications`),
-      reporting: getClient(`${API_BASE}/reporting`),
-    }
-  : {
-      application: getClient(`${API_BASE.application}/applications`),
-      kyc: getClient(`${API_BASE.kyc}/applicants`),
-      document: getClient(`${API_BASE.document}/applications`),
-      underwriting: getClient(`${API_BASE.underwriting}/applications`),
-      sanction: getClient(`${API_BASE.sanction}/applications`),
-      payments: getClient(`${API_BASE.payments}/applications`),
-      disbursement: getClient(`${API_BASE.disbursement}/applications`),
-      reporting: getClient(`${API_BASE.reporting}/reporting`),
-    };
+const api = {
+  application: getClient(`${API_BASE.application}/applications`),
+  kyc: getClient(`${API_BASE.kyc}/applicants`),
+  document: getClient(`${API_BASE.document}/applications`),
+  underwriting: getClient(`${API_BASE.underwriting}/applications`),
+  sanction: getClient(`${API_BASE.sanction}/applications`),
+  payments: getClient(`${API_BASE.payments}/applications`),
+  disbursement: getClient(`${API_BASE.disbursement}/applications`),
+  reporting: getClient(`${API_BASE.reporting}/reporting`),
+};
 
 export default api;
 

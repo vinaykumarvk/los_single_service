@@ -21,8 +21,13 @@ export function createBureauAdapter(provider: 'CIBIL' | 'EXPERIAN' | 'EQUIFAX' =
   // Switch to real adapters based on provider
   switch (provider) {
     case 'CIBIL':
-      logger.info('UsingCIBILAdapter', { provider });
-      return new CIBILAdapter();
+      try {
+        logger.info('UsingCIBILAdapter', { provider });
+        return new CIBILAdapter();
+      } catch (err) {
+        logger.warn('CIBILAdapterInitFailed', { error: (err as Error).message, provider });
+        return new MockBureauAdapter(); // Fallback to mock
+      }
     case 'EXPERIAN':
       // TODO: Implement ExperianAdapter
       logger.warn('ExperianAdapterNotImplemented', { provider });

@@ -22,3 +22,4 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate && \
 EXPOSE 3012
 CMD ["node", "services/audit/dist/server.js"]
 
+

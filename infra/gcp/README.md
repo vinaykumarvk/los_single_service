@@ -259,3 +259,4 @@ gcloud builds triggers create github \
 5. Enable Cloud CDN for static assets
 6. Configure backup and disaster recovery
 
+

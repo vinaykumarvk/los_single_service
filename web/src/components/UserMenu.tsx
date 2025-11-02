@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { User, logout } from '../lib/auth';
+import { logout } from '../lib/auth';
+import { User } from 'oidc-client-ts';
 import { User as UserIcon, LogOut } from 'lucide-react';
 import Button from './ui/Button';
 

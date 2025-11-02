@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:rm": "VITE_PERSONA=rm tsc -b && vite build",
+    "build:admin": "VITE_PERSONA=admin tsc -b && vite build",
+    "build:operations": "VITE_PERSONA=operations tsc -b && vite build",
+    "build:all": "VITE_PERSONA=all tsc -b && vite build",
     "preview": "vite preview --port 5173"
   },
   "dependencies": {
@@ -24,6 +28,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.20",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.1.0",
