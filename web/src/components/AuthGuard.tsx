@@ -35,11 +35,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  // Optional: Uncomment to require authentication
-  // For now, allow unauthenticated access (demo mode)
-  // if (!isAuthenticated) {
-  //   return <Navigate to="/login" replace />;
-  // }
+  // Require authentication
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
   return <>{children}</>;
 }

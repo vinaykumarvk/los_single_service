@@ -27,15 +27,47 @@ import '../index.css';
 // Import persona-specific routes
 import { RMRoutes } from '../rm/routes';
 import { config } from '../shared/lib/config';
+import { useAuth } from '../shared/hooks/useAuth';
 
 function AppContent() {
   const commandPalette = useCommandPalette();
-  // Get persona from config - default to 'all' if not set
-  const persona = (typeof window !== 'undefined' && window.__LOS_CONFIG__?.persona?.persona) 
-    || import.meta.env.VITE_PERSONA 
-    || 'all';
+  const { user } = useAuth();
+  
+  // Determine persona from user roles if authenticated, otherwise from config
+  const getPersonaFromUser = () => {
+    if (!user || !user.roles || user.roles.length === 0) {
+      return null;
+    }
+    
+    // Check user roles to determine persona
+    if (user.roles.includes('rm') || user.roles.includes('relationship_manager')) {
+      return 'rm';
+    }
+    if (user.roles.includes('admin')) {
+      return 'admin';
+    }
+    if (user.roles.includes('ops') || user.roles.includes('operations')) {
+      return 'operations';
+    }
+    return null;
+  };
+  
+  // Get persona from user roles first, then config, then default to 'all'
+  // IMPORTANT: Only use config persona if user is authenticated
+  // If not authenticated, always use 'all' to show login screen
+  let persona: 'rm' | 'admin' | 'operations' | 'all';
+  
+  if (user && user.roles && user.roles.length > 0) {
+    // User is authenticated - determine persona from roles
+    persona = getPersonaFromUser() || 'all';
+  } else {
+    // User is NOT authenticated - always use 'all' to show login screen
+    // Don't use config persona when not authenticated
+    persona = 'all';
+  }
 
   // If persona is 'rm', show only RM routes
+  // BUT: Only if user is authenticated, otherwise show login
   if (persona === 'rm') {
     return (
       <BrowserRouter>
@@ -43,7 +75,22 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/callback" element={<Callback />} />
-          <Route path="/*" element={<RMRoutes />} />
+          <Route
+            path="/"
+            element={
+              <AuthGuard>
+                <RMRoutes />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/*"
+            element={
+              <AuthGuard>
+                <RMRoutes />
+              </AuthGuard>
+            }
+          />
         </Routes>
       </BrowserRouter>
     );
@@ -57,8 +104,15 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/callback" element={<Callback />} />
-          {/* TODO: Add AdminRoutes when implemented */}
-          <Route path="/*" element={<div>Admin routes (coming soon)</div>} />
+          <Route
+            path="/*"
+            element={
+              <AuthGuard>
+                {/* TODO: Add AdminRoutes when implemented */}
+                <div>Admin routes (coming soon)</div>
+              </AuthGuard>
+            }
+          />
         </Routes>
       </BrowserRouter>
     );
@@ -71,8 +125,15 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/callback" element={<Callback />} />
-          {/* TODO: Add OperationsRoutes when implemented */}
-          <Route path="/*" element={<div>Operations routes (coming soon)</div>} />
+          <Route
+            path="/*"
+            element={
+              <AuthGuard>
+                {/* TODO: Add OperationsRoutes when implemented */}
+                <div>Operations routes (coming soon)</div>
+              </AuthGuard>
+            }
+          />
         </Routes>
       </BrowserRouter>
     );

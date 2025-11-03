@@ -2,6 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App';
 import './index.css';
+import { performanceMonitor } from './utils/performance';
+
+// Initialize performance monitoring
+performanceMonitor.mark('app-start');
 
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {

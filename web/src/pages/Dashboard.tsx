@@ -72,7 +72,7 @@ export default function Dashboard() {
         // Fetch TAT data
         const tatResponse = await api.reporting.get('/tat');
         const tatData: TATData = tatResponse.data.data || {};
-
+        
         // Calculate totals from pipeline
         const totalApplications = Object.values(pipelineData).reduce((sum, count) => sum + (count || 0), 0);
         const pendingReview = (pipelineData.Verification || 0) + 
@@ -118,6 +118,16 @@ export default function Dashboard() {
     };
 
     fetchDashboardData();
+    
+    // Setup real-time updates via polling (every 10 seconds)
+    const intervalId = setInterval(() => {
+      fetchDashboardData();
+    }, 10000);
+    
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
   if (error && !loading) {

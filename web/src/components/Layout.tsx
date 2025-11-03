@@ -32,7 +32,7 @@ export default function Layout({ children }: LayoutProps) {
                   </div>
                   <div>
                     <h1 className="text-xl font-bold text-secondary-900 dark:text-secondary-100 tracking-tight">LOS</h1>
-                    <p className="text-xs text-secondary-500 dark:text-secondary-400 -mt-0.5">Loan Origination</p>
+                    <p className="text-xs text-secondary-500 dark:text-secondary-300 -mt-0.5">Loan Origination</p>
                   </div>
                 </Link>
               </div>
@@ -63,7 +63,7 @@ export default function Layout({ children }: LayoutProps) {
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Search Button - hidden on mobile */}
               <button
-                className="hidden lg:flex items-center gap-2 px-3 py-1.5 text-sm text-secondary-600 dark:text-secondary-400 bg-secondary-100 dark:bg-secondary-800 hover:bg-secondary-200 dark:hover:bg-secondary-700 rounded-lg transition-colors"
+                className="hidden lg:flex items-center gap-2 px-3 py-1.5 text-sm text-secondary-600 dark:text-secondary-300 bg-secondary-100 dark:bg-secondary-800 hover:bg-secondary-200 dark:hover:bg-secondary-700 rounded-lg transition-colors"
                 onClick={() => {
                   const event = new KeyboardEvent('keydown', {
                     key: 'k',
@@ -88,7 +88,7 @@ export default function Layout({ children }: LayoutProps) {
               {/* Mobile menu button */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden inline-flex items-center justify-center p-2 rounded-lg text-secondary-600 dark:text-secondary-400 hover:bg-secondary-100 dark:hover:bg-secondary-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
+                className="md:hidden inline-flex items-center justify-center p-2 rounded-lg text-secondary-600 dark:text-secondary-300 hover:bg-secondary-100 dark:hover:bg-secondary-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
               >
                 <span className="sr-only">Open main menu</span>
                 {mobileMenuOpen ? (

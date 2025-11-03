@@ -71,13 +71,15 @@ export const rmAPI = {
       email?: string;
       pan?: string;
       addressLine1?: string;
+      addressLine2?: string;
       city?: string;
       state?: string;
       pincode?: string;
       employmentType?: string;
       monthlyIncome?: number;
       employerName?: string;
-      otherIncomeSources?: string;
+      businessName?: string;
+      otherIncomeSources?: number;
       yearsInJob?: number;
       bankAccountNumber?: string;
       bankIfsc?: string;

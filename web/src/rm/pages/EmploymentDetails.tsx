@@ -1,5 +1,5 @@
 /**
- * RM Employment/Income Details Page
+ * RM Employment/Income Details Page - Enhanced Mobile-First Design
  * Capture employment and income-related details
  */
 
@@ -11,9 +11,10 @@ import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import Spinner from '../../components/ui/Spinner';
+import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import { ArrowLeft, ArrowRight, Save, Briefcase, DollarSign, FileText, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
 
 const employmentSchema = z.object({
   employmentType: z.enum(['Salaried', 'Self-employed'], { 
@@ -38,7 +39,7 @@ const employmentSchema = z.object({
     }, 'Monthly income must be at least ₹10,000'),
   yearsInJob: z.string()
     .refine((val) => {
-      if (!val || val === '') return true; // Optional field
+      if (!val || val === '') return true;
       const num = parseFloat(val);
       return !isNaN(num) && num >= 0 && num <= 50;
     }, 'Years in job must be between 0 and 50 years')
@@ -48,11 +49,11 @@ const employmentSchema = z.object({
     .optional(),
 }).refine((data) => {
   if (data.employmentType === 'Salaried') {
-    return !!data.employerName && data.employerName.trim().length > 0;
+    return !!data.employerName;
   }
   return true;
 }, {
-  message: 'Organization name is required for salaried employees',
+  message: 'Employer name is required for salaried employees',
   path: ['employerName'],
 });
 
@@ -68,25 +69,21 @@ export default function RMEmploymentDetails() {
   const {
     register,
     handleSubmit,
+    formState: { errors, isDirty },
     watch,
     setValue,
-    formState: { errors, isDirty },
   } = useForm<EmploymentForm>({
     resolver: zodResolver(employmentSchema),
-    defaultValues: {
-      employmentType: undefined,
-    },
   });
 
   const employmentType = watch('employmentType');
   const monthlyIncome = watch('monthlyIncome');
   const otherIncomeSources = watch('otherIncomeSources');
 
-  // Calculate total annual income
   const totalAnnualIncome = useMemo(() => {
     const monthly = parseFloat(monthlyIncome || '0');
     const other = parseFloat(otherIncomeSources || '0');
-    return (monthly * 12) + (other * 12);
+    return (monthly + other) * 12;
   }, [monthlyIncome, otherIncomeSources]);
 
   useEffect(() => {
@@ -103,9 +100,10 @@ export default function RMEmploymentDetails() {
         const applicant = response.data;
         setValue('employmentType', applicant.employment_type as any);
         setValue('employerName', applicant.employer_name || '');
+        setValue('businessName', applicant.business_name || '');
         setValue('monthlyIncome', applicant.monthly_income?.toString() || '');
         setValue('yearsInJob', applicant.years_in_job?.toString() || '');
-        setValue('otherIncomeSources', applicant.other_income_sources || '');
+        setValue('otherIncomeSources', applicant.other_income_sources ? applicant.other_income_sources.toString() : '');
       }
     } catch (err: any) {
       console.error('Failed to load employment data:', err);
@@ -129,15 +127,10 @@ export default function RMEmploymentDetails() {
 
     try {
       setLoading(true);
-      // Get existing applicant data first
-      const existingApplicant = await rmAPI.applicants.get(id);
       await rmAPI.applicants.update(id, {
-        firstName: existingApplicant.data?.first_name || '',
-        lastName: existingApplicant.data?.last_name || '',
-        dateOfBirth: existingApplicant.data?.date_of_birth || '',
-        mobile: existingApplicant.data?.mobile || '',
         employmentType: data.employmentType,
-        employerName: data.employmentType === 'Salaried' ? data.employerName : undefined,
+        employerName: data.employerName,
+        businessName: data.businessName,
         monthlyIncome: parseFloat(data.monthlyIncome),
         yearsInJob: data.yearsInJob ? parseFloat(data.yearsInJob) : undefined,
         otherIncomeSources: data.otherIncomeSources || undefined,
@@ -160,56 +153,108 @@ export default function RMEmploymentDetails() {
     }
   };
 
+  // Calculate form completion percentage
+  const formData = watch();
+  const completionPercentage = () => {
+    const requiredFields = ['employmentType', 'monthlyIncome'];
+    const conditionalFields = employmentType === 'Salaried' ? ['employerName'] : ['businessName'];
+    const allRequired = [...requiredFields, ...conditionalFields];
+    const filledFields = allRequired.filter(field => {
+      const value = formData[field as keyof EmploymentForm];
+      return value && value !== '';
+    }).length;
+    return Math.round((filledFields / allRequired.length) * 100);
+  };
+
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
+      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Employment & Income Details</h1>
-          <p className="text-sm text-gray-500 mt-1">Capture employment and income information</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Employment & Income Details
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Step 2 of 4: Capture employment and income information
+          </p>
         </div>
-        <Button variant="outline" onClick={() => navigate(`/rm/applications/${id}/personal`)}>
-          ← Back
+        <Button
+          variant="outline"
+          onClick={() => navigate(`/rm/applications/${id}/personal`)}
+          className="w-full sm:w-auto touch-manipulation min-h-[44px]"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Previous
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Progress Indicator */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Form Completion
+            </span>
+            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+              {completionPercentage()}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${completionPercentage()}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6">
+        {/* Employment Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Employment Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <CardTitle>Employment Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Employment Type *
               </label>
               <select
                 {...register('employmentType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px]"
               >
                 <option value="">Select Employment Type</option>
                 <option value="Salaried">Salaried</option>
                 <option value="Self-employed">Self-employed</option>
               </select>
               {errors.employmentType && (
-                <p className="mt-1 text-sm text-red-600">{errors.employmentType.message}</p>
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  {errors.employmentType.message}
+                </p>
               )}
             </div>
 
             {employmentType === 'Salaried' && (
               <div>
                 <Input
-                  label="Organization Name *"
+                  label="Employer/Organization Name *"
                   {...register('employerName')}
                   error={errors.employerName?.message}
-                  placeholder="ABC Corporation Pvt Ltd"
+                  placeholder="Enter employer name"
+                  className="touch-manipulation"
                 />
               </div>
             )}
@@ -220,29 +265,35 @@ export default function RMEmploymentDetails() {
                   label="Business Name"
                   {...register('businessName')}
                   error={errors.businessName?.message}
-                  placeholder="ABC Traders"
+                  placeholder="Enter business name"
+                  className="touch-manipulation"
                 />
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Input
-                  label="Years in Job/Business"
-                  type="number"
-                  {...register('yearsInJob')}
-                  error={errors.yearsInJob?.message}
-                  placeholder="5"
-                  min="0"
-                />
-              </div>
+            <div>
+              <Input
+                label="Years in Current Job"
+                {...register('yearsInJob')}
+                error={errors.yearsInJob?.message}
+                placeholder="0"
+                type="number"
+                min="0"
+                max="50"
+                inputMode="numeric"
+                className="touch-manipulation"
+              />
             </div>
           </CardContent>
         </Card>
 
+        {/* Income Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Income Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <CardTitle>Income Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -252,9 +303,14 @@ export default function RMEmploymentDetails() {
                 {...register('monthlyIncome')}
                 error={errors.monthlyIncome?.message}
                 placeholder="50000"
-                min="0"
+                min="10000"
                 step="1000"
+                inputMode="numeric"
+                className="touch-manipulation"
               />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Minimum ₹10,000 required
+              </p>
             </div>
 
             <div>
@@ -266,54 +322,69 @@ export default function RMEmploymentDetails() {
                 placeholder="10000"
                 min="0"
                 step="1000"
+                inputMode="numeric"
+                className="touch-manipulation"
               />
-              <p className="mt-1 text-xs text-gray-500">Rental income, dividends, etc.</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Rental income, dividends, etc.
+              </p>
             </div>
 
-            <div className="bg-gray-50 p-4 rounded-md">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-700">Total Annual Income:</span>
-                <span className="text-lg font-bold text-green-600">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Total Annual Income:
+                </span>
+                <span className="text-lg font-bold text-green-600 dark:text-green-400">
                   ₹{totalAnnualIncome.toLocaleString('en-IN')}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Calculated as: (Monthly Income × 12) + (Other Income × 12)
               </p>
             </div>
           </CardContent>
         </Card>
 
+        {/* Document Upload */}
         <Card>
           <CardHeader>
-            <CardTitle>Income Document Upload (Optional)</CardTitle>
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <CardTitle>Income Documents (Optional)</CardTitle>
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               Upload salary slips or ITR for automatic income validation
             </p>
             <Button
               type="button"
               variant="outline"
               onClick={() => navigate(`/rm/applications/${id}/documents`)}
+              className="touch-manipulation min-h-[44px]"
             >
+              <Upload className="h-4 w-4 mr-2" />
               Upload Documents
             </Button>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
               Documents can be uploaded and parsed later
             </p>
           </CardContent>
         </Card>
 
-        <div className="flex justify-between">
+        {/* Form Actions */}
+        <div className="flex flex-col sm:flex-row justify-between gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
           <Button
             type="button"
             variant="outline"
             onClick={() => navigate(`/rm/applications/${id}/personal`)}
+            className="w-full sm:w-auto touch-manipulation min-h-[44px]"
           >
-            ← Previous
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Previous
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button
               type="button"
               variant="secondary"
@@ -322,11 +393,27 @@ export default function RMEmploymentDetails() {
                 await onSubmit(values as EmploymentForm);
               }}
               disabled={loading || !isDirty}
+              className="w-full sm:w-auto touch-manipulation min-h-[44px]"
             >
+              <Save className="h-4 w-4 mr-2" />
               Save as Draft
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : 'Save & Continue'}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full sm:w-auto touch-manipulation min-h-[44px]"
+            >
+              {loading ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Save & Continue
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -334,4 +421,3 @@ export default function RMEmploymentDetails() {
     </div>
   );
 }
-

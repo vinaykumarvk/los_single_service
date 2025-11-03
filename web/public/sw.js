@@ -16,6 +16,13 @@ const STATIC_ASSETS = [
   '/icon-512.png'
 ];
 
+// Cache strategy: Network First, Cache Fallback
+const CACHE_STRATEGY = {
+  static: 'cache-first', // Static assets
+  api: 'network-first',  // API calls
+  images: 'cache-first', // Images
+};
+
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -56,43 +63,60 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      // Return cached version if available
+    (async () => {
+      // Network First Strategy for API calls
+      if (url.pathname.startsWith('/api/')) {
+        try {
+          const networkResponse = await fetch(request);
+          if (networkResponse.ok) {
+            const responseToCache = networkResponse.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => {
+              cache.put(request, responseToCache);
+            });
+            return networkResponse;
+          }
+        } catch (error) {
+          // Network failed, try cache
+          const cachedResponse = await caches.match(request);
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // Return offline response for API calls
+          return new Response(
+            JSON.stringify({ error: 'Offline', message: 'You are currently offline' }),
+            {
+              status: 503,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+      }
+
+      // Cache First Strategy for static assets and images
+      const cachedResponse = await caches.match(request);
       if (cachedResponse) {
         return cachedResponse;
       }
 
       // Fetch from network
-      return fetch(request)
-        .then((response) => {
-          // Don't cache non-200 responses
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse.ok) {
+          const responseToCache = networkResponse.clone();
+          caches.open(STATIC_CACHE).then((cache) => {
+            cache.put(request, responseToCache);
+          });
+          return networkResponse;
+        }
+      } catch (error) {
+        // Offline fallback
+        if (request.destination === 'document') {
+          return caches.match('/index.html') || new Response('Offline', { status: 503 });
+        }
+      }
 
-          // Clone response for caching
-          const responseToCache = response.clone();
-
-          // Cache dynamic content
-          if (url.pathname.startsWith('/api/')) {
-            caches.open(DYNAMIC_CACHE).then((cache) => {
-              cache.put(request, responseToCache);
-            });
-          } else {
-            caches.open(STATIC_CACHE).then((cache) => {
-              cache.put(request, responseToCache);
-            });
-          }
-
-          return response;
-        })
-        .catch(() => {
-          // Offline fallback
-          if (request.destination === 'document') {
-            return caches.match('/index.html');
-          }
-        });
-    })
+      return new Response('Offline', { status: 503 });
+    })()
   );
 });
 

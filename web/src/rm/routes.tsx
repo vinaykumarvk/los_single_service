@@ -4,7 +4,6 @@
  */
 
 import { Routes, Route } from 'react-router-dom';
-import AuthGuard from '../components/AuthGuard';
 import { RMayout } from './components/RMLayout';
 
 // Import RM Pages
@@ -22,24 +21,25 @@ import RMApplicationReview from './pages/ApplicationReview';
 const RMApplicationStatus = () => <div>RM Application Status (Coming Soon)</div>;
 
 export function RMRoutes() {
+  // Note: AuthGuard is now handled at the App.tsx level
+  // This component assumes authentication has already been checked
   return (
-    <AuthGuard>
-      <RMayout>
-        <Routes>
-          <Route path="/" element={<RMDashboard />} />
-          <Route path="/applications" element={<RMApplicationsList />} />
-          <Route path="/applications/new" element={<RMApplicationsList />} />
-          <Route path="/applications/:id/personal" element={<RMPersonalInformation />} />
-          <Route path="/applications/:id/employment" element={<RMEmploymentDetails />} />
-          <Route path="/applications/:id/loan-property" element={<RMLoanPropertyDetails />} />
-          <Route path="/applications/:id/documents" element={<RMDocumentUpload />} />
-          <Route path="/applications/:id/bank" element={<RMBankVerification />} />
-          <Route path="/applications/:id/cibil" element={<RMCIBILCheck />} />
-          <Route path="/applications/:id/review" element={<RMApplicationReview />} />
-          <Route path="/applications/:id/status" element={<RMApplicationStatus />} />
-        </Routes>
-      </RMayout>
-    </AuthGuard>
+    <RMayout>
+      <Routes>
+        <Route path="/rm" element={<RMDashboard />} />
+        <Route path="/" element={<RMDashboard />} />
+        <Route path="/applications" element={<RMApplicationsList />} />
+        <Route path="/applications/new" element={<RMApplicationsList />} />
+        <Route path="/applications/:id/personal" element={<RMPersonalInformation />} />
+        <Route path="/applications/:id/employment" element={<RMEmploymentDetails />} />
+        <Route path="/applications/:id/loan-property" element={<RMLoanPropertyDetails />} />
+        <Route path="/applications/:id/documents" element={<RMDocumentUpload />} />
+        <Route path="/applications/:id/bank" element={<RMBankVerification />} />
+        <Route path="/applications/:id/cibil" element={<RMCIBILCheck />} />
+        <Route path="/applications/:id/review" element={<RMApplicationReview />} />
+        <Route path="/applications/:id/status" element={<RMApplicationStatus />} />
+      </Routes>
+    </RMayout>
   );
 }
 

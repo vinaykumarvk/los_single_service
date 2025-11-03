@@ -41,7 +41,16 @@ export default defineConfig({
     outDir: buildConfig.outDir,
     rollupOptions: {
       input: buildConfig.entry,
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'ui-vendor': ['lucide-react', 'recharts'],
+          'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
+        },
+      },
     },
+    chunkSizeWarningLimit: 1000,
+    sourcemap: false, // Disable sourcemaps in production for smaller bundles
   },
   base: buildConfig.base,
 });

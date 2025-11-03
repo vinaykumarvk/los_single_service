@@ -11,9 +11,10 @@ import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import Spinner from '../../components/ui/Spinner';
+import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import { ArrowLeft, Save, Home, DollarSign, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const loanPropertySchema = z.object({
   loanType: z.enum(['Home Loan', 'Balance Transfer', 'Top-up'], { 
@@ -221,39 +222,86 @@ export default function RMLoanPropertyDetails() {
     }
   };
 
+  // Calculate form completion percentage
+  const formData = watch();
+  const completionPercentage = () => {
+    const requiredFields = ['loanType', 'requestedAmount', 'tenureYears'];
+    const conditionalFields = loanType === 'Home Loan' ? ['propertyType'] : [];
+    const allRequired = [...requiredFields, ...conditionalFields];
+    const filledFields = allRequired.filter(field => {
+      const value = formData[field as keyof typeof formData];
+      return value && value !== '';
+    }).length;
+    return Math.round((filledFields / allRequired.length) * 100);
+  };
+
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
+      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Loan & Property Details</h1>
-          <p className="text-sm text-gray-500 mt-1">Record loan requirements and property information</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Loan & Property Details
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Step 3 of 4: Record loan requirements and property information
+          </p>
         </div>
-        <Button variant="outline" onClick={() => navigate(`/rm/applications/${id}/employment`)}>
-          ← Back
+        <Button
+          variant="outline"
+          onClick={() => navigate(`/rm/applications/${id}/employment`)}
+          className="w-full sm:w-auto touch-manipulation min-h-[44px]"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Previous
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Progress Indicator */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Form Completion
+            </span>
+            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+              {completionPercentage()}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${completionPercentage()}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Loan Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <CardTitle>Loan Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Loan Type *
               </label>
               <select
                 {...register('loanType')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px]"
               >
                 <option value="">Select Loan Type</option>
                 <option value="Home Loan">Home Loan</option>
@@ -261,7 +309,10 @@ export default function RMLoanPropertyDetails() {
                 <option value="Top-up">Top-up</option>
               </select>
               {errors.loanType && (
-                <p className="mt-1 text-sm text-red-600">{errors.loanType.message}</p>
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  {errors.loanType.message}
+                </p>
               )}
             </div>
 
@@ -292,14 +343,14 @@ export default function RMLoanPropertyDetails() {
             </div>
 
             {requestedAmount && tenureYears && emiEstimate > 0 && (
-              <div className="bg-blue-50 p-4 rounded-md">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-700">Estimated EMI:</span>
-                  <span className="text-lg font-bold text-blue-600">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated EMI:</span>
+                  <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
                     ₹{Math.round(emiEstimate).toLocaleString('en-IN')}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   * Based on 8.5% interest rate (approximate)
                 </p>
               </div>
@@ -310,7 +361,10 @@ export default function RMLoanPropertyDetails() {
         {loanType === 'Home Loan' && (
           <Card>
             <CardHeader>
-              <CardTitle>Property Information</CardTitle>
+              <div className="flex items-center gap-2">
+                <Home className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <CardTitle>Property Information</CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>

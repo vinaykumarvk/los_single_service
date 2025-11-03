@@ -96,10 +96,13 @@ export function getConfig(): AppConfig {
     jwt: {
       loginEndpoint:
         runtimeConfig?.auth?.jwt?.loginEndpoint ||
-        `${apiConfig.baseURL}/api/auth/login`,
+        import.meta.env.VITE_AUTH_SERVICE_URL ||
+        `${apiConfig.baseURL}/api/auth/login` ||
+        'http://localhost:3002/api/auth/login',
       refreshEndpoint:
         runtimeConfig?.auth?.jwt?.refreshEndpoint ||
-        `${apiConfig.baseURL}/api/auth/refresh`,
+        `${apiConfig.baseURL}/api/auth/refresh` ||
+        'http://localhost:3002/api/auth/refresh',
       storageKey: runtimeConfig?.auth?.jwt?.storageKey || import.meta.env.VITE_JWT_STORAGE_KEY || 'los_token',
     },
     oauth2: {

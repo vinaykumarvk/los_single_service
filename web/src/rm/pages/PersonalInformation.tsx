@@ -1,5 +1,5 @@
 /**
- * RM Personal Information Page
+ * RM Personal Information Page - Enhanced Mobile-First Design
  * Capture customer's personal details
  */
 
@@ -11,9 +11,10 @@ import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import Spinner from '../../components/ui/Spinner';
+import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import { ArrowLeft, Save, FileText, User, MapPin, CreditCard, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const personalInfoSchema = z.object({
   firstName: z.string()
@@ -48,35 +49,30 @@ const personalInfoSchema = z.object({
   }),
   maritalStatus: z.enum(['Single', 'Married', 'Divorced', 'Widowed'], {
     invalid_type_error: 'Please select a valid marital status'
-  }).optional(),
+  })
+    .or(z.literal('')),
   mobile: z.string()
     .min(1, 'Mobile number is required')
-    .regex(/^[6-9][0-9]{9}$/, 'Mobile number must be 10 digits and start with 6, 7, 8, or 9'),
+    .regex(/^[6-9]\d{9}$/, 'Mobile number must be 10 digits starting with 6-9'),
   email: z.string()
-    .email('Please enter a valid email address (e.g., user@example.com)')
-    .optional()
+    .email('Invalid email address')
     .or(z.literal('')),
   addressLine1: z.string()
     .min(1, 'Address line 1 is required')
-    .min(10, 'Address must be at least 10 characters')
-    .max(500, 'Address must not exceed 500 characters'),
+    .min(5, 'Address must be at least 5 characters')
+    .max(200, 'Address must not exceed 200 characters'),
   addressLine2: z.string()
-    .max(500, 'Address line 2 must not exceed 500 characters')
-    .optional(),
+    .max(200, 'Address must not exceed 200 characters')
+    .or(z.literal('')),
   pincode: z.string()
     .min(1, 'PIN code is required')
-    .regex(/^[0-9]{6}$/, 'PIN code must be exactly 6 digits (e.g., 400001)'),
+    .regex(/^\d{6}$/, 'PIN code must be 6 digits'),
   city: z.string()
-    .min(1, 'City is required')
-    .min(2, 'City must be at least 2 characters')
-    .max(100, 'City must not exceed 100 characters'),
+    .min(1, 'City is required'),
   state: z.string()
-    .min(1, 'State is required')
-    .min(2, 'State must be at least 2 characters')
-    .max(100, 'State must not exceed 100 characters'),
+    .min(1, 'State is required'),
   pan: z.string()
-    .regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'PAN must be in format: ABCDE1234F (5 letters, 4 digits, 1 letter)')
-    .optional()
+    .regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'PAN must be in format ABCDE1234F')
     .or(z.literal('')),
 });
 
@@ -144,7 +140,6 @@ export default function RMPersonalInformation() {
 
   const loadMasters = async () => {
     try {
-      // Load branches to get cities/states
       const response = await rmAPI.masters.branches();
       if (response.data?.branches) {
         const uniqueStates = [...new Set(response.data.branches.map((b: any) => b.state).filter(Boolean))] as string[];
@@ -153,7 +148,6 @@ export default function RMPersonalInformation() {
         setCities(uniqueCities.sort());
       }
     } catch (err) {
-      // Fallback to hardcoded states/cities if API fails
       setStates(['Maharashtra', 'Karnataka', 'Tamil Nadu', 'Delhi', 'Gujarat']);
       setCities(['Mumbai', 'Bangalore', 'Chennai', 'Delhi', 'Ahmedabad']);
     }
@@ -177,20 +171,20 @@ export default function RMPersonalInformation() {
         gender: data.gender,
         maritalStatus: data.maritalStatus,
         mobile: data.mobile,
-        email: data.email || undefined,
+        email: data.email,
         addressLine1: data.addressLine1,
+        addressLine2: data.addressLine2,
+        pincode: data.pincode,
         city: data.city,
         state: data.state,
-        pincode: data.pincode,
-        pan: data.pan || undefined,
+        pan: data.pan,
       });
-
+      
       addToast({
         type: 'success',
         message: 'Personal information saved successfully',
       });
-
-      // Navigate to next step
+      
       navigate(`/rm/applications/${id}/employment`);
     } catch (err: any) {
       console.error('Failed to save personal information:', err);
@@ -205,45 +199,95 @@ export default function RMPersonalInformation() {
 
   const selectedState = watch('state');
 
-  // Filter cities based on selected state
   useEffect(() => {
     if (selectedState) {
       loadMasters();
     }
   }, [selectedState]);
 
+  // Calculate form completion percentage
+  const formData = watch();
+  const completionPercentage = () => {
+    const requiredFields = [
+      'firstName', 'lastName', 'dateOfBirth', 'gender', 'mobile',
+      'addressLine1', 'pincode', 'city', 'state'
+    ];
+    const filledFields = requiredFields.filter(field => {
+      const value = formData[field as keyof PersonalInfoForm];
+      return value && value !== '';
+    }).length;
+    return Math.round((filledFields / requiredFields.length) * 100);
+  };
+
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
+      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Personal Information</h1>
-          <p className="text-sm text-gray-500 mt-1">Capture customer's personal details</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Personal Information
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Step 1 of 4: Capture customer's personal details
+          </p>
         </div>
-        <Button variant="outline" onClick={() => navigate(`/rm/applications/${id}`)}>
-          ← Back
+        <Button
+          variant="outline"
+          onClick={() => navigate(`/rm/applications/${id}`)}
+          className="w-full sm:w-auto touch-manipulation min-h-[44px]"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Progress Indicator */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Form Completion
+            </span>
+            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+              {completionPercentage()}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${completionPercentage()}%` }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6">
+        {/* Basic Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <CardTitle>Basic Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Input
                   label="First Name *"
                   {...register('firstName')}
                   error={errors.firstName?.message}
+                  className="touch-manipulation"
                 />
               </div>
               <div>
@@ -251,28 +295,30 @@ export default function RMPersonalInformation() {
                   label="Last Name *"
                   {...register('lastName')}
                   error={errors.lastName?.message}
+                  className="touch-manipulation"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Date of Birth *
                 </label>
                 <Input
                   type="date"
                   {...register('dateOfBirth')}
                   error={errors.dateOfBirth?.message}
+                  className="touch-manipulation min-h-[44px]"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Gender *
                 </label>
                 <select
                   {...register('gender')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px]"
                 >
                   <option value="">Select Gender</option>
                   <option value="Male">Male</option>
@@ -280,37 +326,42 @@ export default function RMPersonalInformation() {
                   <option value="Other">Other</option>
                 </select>
                 {errors.gender && (
-                  <p className="mt-1 text-sm text-red-600">{errors.gender.message}</p>
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4" />
+                    {errors.gender.message}
+                  </p>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Marital Status
-                </label>
-                <select
-                  {...register('maritalStatus')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select Marital Status</option>
-                  <option value="Single">Single</option>
-                  <option value="Married">Married</option>
-                  <option value="Divorced">Divorced</option>
-                  <option value="Widowed">Widowed</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Marital Status
+              </label>
+              <select
+                {...register('maritalStatus')}
+                className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px]"
+              >
+                <option value="">Select Marital Status</option>
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Divorced">Divorced</option>
+                <option value="Widowed">Widowed</option>
+              </select>
             </div>
           </CardContent>
         </Card>
 
+        {/* Contact Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <CardTitle>Contact Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Input
                   label="Mobile Number *"
@@ -318,6 +369,8 @@ export default function RMPersonalInformation() {
                   error={errors.mobile?.message}
                   placeholder="9876543210"
                   maxLength={10}
+                  inputMode="numeric"
+                  className="touch-manipulation"
                 />
               </div>
               <div>
@@ -327,15 +380,21 @@ export default function RMPersonalInformation() {
                   {...register('email')}
                   error={errors.email?.message}
                   placeholder="customer@example.com"
+                  inputMode="email"
+                  className="touch-manipulation"
                 />
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Address Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Address Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <CardTitle>Address Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -343,6 +402,7 @@ export default function RMPersonalInformation() {
                 label="Address Line 1 *"
                 {...register('addressLine1')}
                 error={errors.addressLine1?.message}
+                className="touch-manipulation"
               />
             </div>
             <div>
@@ -350,16 +410,17 @@ export default function RMPersonalInformation() {
                 label="Address Line 2"
                 {...register('addressLine2')}
                 error={errors.addressLine2?.message}
+                className="touch-manipulation"
               />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   State *
                 </label>
                 <select
                   {...register('state')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px]"
                 >
                   <option value="">Select State</option>
                   {states.map((state) => (
@@ -369,24 +430,24 @@ export default function RMPersonalInformation() {
                   ))}
                 </select>
                 {errors.state && (
-                  <p className="mt-1 text-sm text-red-600">{errors.state.message}</p>
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4" />
+                    {errors.state.message}
+                  </p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   City *
                 </label>
                 <select
                   {...register('city')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!selectedState}
                 >
                   <option value="">Select City</option>
                   {cities
-                    .filter((city) => {
-                      // Filter cities by selected state if we have that info
-                      return true; // Show all cities for now
-                    })
+                    .filter((city) => true)
                     .map((city) => (
                       <option key={city} value={city}>
                         {city}
@@ -394,7 +455,10 @@ export default function RMPersonalInformation() {
                     ))}
                 </select>
                 {errors.city && (
-                  <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4" />
+                    {errors.city.message}
+                  </p>
                 )}
               </div>
               <div>
@@ -404,15 +468,21 @@ export default function RMPersonalInformation() {
                   error={errors.pincode?.message}
                   placeholder="400001"
                   maxLength={6}
+                  inputMode="numeric"
+                  className="touch-manipulation"
                 />
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Identity Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Identity Information</CardTitle>
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              <CardTitle>Identity Information</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -422,22 +492,26 @@ export default function RMPersonalInformation() {
                 error={errors.pan?.message}
                 placeholder="ABCDE1234F"
                 maxLength={10}
-                className="uppercase"
+                className="uppercase touch-manipulation"
               />
-              <p className="mt-1 text-xs text-gray-500">Format: ABCDE1234F</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Format: ABCDE1234F
+              </p>
             </div>
           </CardContent>
         </Card>
 
-        <div className="flex justify-between">
+        {/* Form Actions */}
+        <div className="flex flex-col sm:flex-row justify-between gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
           <Button
             type="button"
             variant="outline"
             onClick={() => navigate(`/rm/applications/${id}`)}
+            className="w-full sm:w-auto touch-manipulation min-h-[44px]"
           >
             Cancel
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <Button
               type="button"
               variant="secondary"
@@ -446,11 +520,27 @@ export default function RMPersonalInformation() {
                 await onSubmit(values as PersonalInfoForm);
               }}
               disabled={loading || !isDirty}
+              className="w-full sm:w-auto touch-manipulation min-h-[44px]"
             >
+              <Save className="h-4 w-4 mr-2" />
               Save as Draft
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : 'Save & Continue'}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full sm:w-auto touch-manipulation min-h-[44px]"
+            >
+              {loading ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Save & Continue
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -458,4 +548,3 @@ export default function RMPersonalInformation() {
     </div>
   );
 }
-
