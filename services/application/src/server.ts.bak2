@@ -461,11 +461,13 @@ app.get('/api/applications/:id', async (req: Request, res: Response) => {
   try {
     const applicationId = req.params.id;
     
-    // Validate application ID format: 2 letters + 5 digits (e.g., HL00001, PL00042)
-    const appIdRegex = /^[A-Z]{2}[0-9]{5}$/;
-    if (!appIdRegex.test(applicationId)) {
-      return res.status(400).json({ error: 'Invalid application ID format. Expected format: XX00000 (e.g., HL00001)' });
-    }    const { rows } = await pool.query(
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(applicationId)) {
+      return res.status(400).json({ error: 'Invalid application ID format' });
+    }
+
+    const { rows } = await pool.query(
       `SELECT 
         application_id,
         applicant_id,

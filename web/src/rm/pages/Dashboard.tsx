@@ -26,13 +26,16 @@ import {
   FileEdit,
   Search
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface DashboardStats {
   total: number;
   draft: number;
   submitted: number;
   inProgress: number;
+  approved?: number;
+  rejected?: number;
+  disbursed?: number;
 }
 
 interface RecentApplication {
@@ -51,11 +54,20 @@ export default function RMDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentApplications, setRecentApplications] = useState<RecentApplication[]>([]);
   const [error, setError] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [autoReloadPromptShown, setAutoReloadPromptShown] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
+    
+    // Check for refresh query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('refresh') === 'true') {
+      // Remove refresh parameter from URL
+      window.history.replaceState({}, '', window.location.pathname);
+      // Reload dashboard data
+      loadDashboardData(true);
+    }
     
     // Setup real-time updates via SSE
     if (user?.id) {
@@ -92,7 +104,10 @@ export default function RMDashboard() {
     }
   }, [user?.id]);
 
-  const loadDashboardData = async (isRefresh = false) => {
+  const loadDashboardData = async (isRefresh = false, retryCount = 0) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000; // 2 seconds
+    
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -102,36 +117,113 @@ export default function RMDashboard() {
       setError('');
 
       try {
+        // Add cache-busting query parameter to force fresh data
+        const timestamp = Date.now();
         const dashboardResponse = await rmAPI.applications.getDashboard();
+        console.log('Dashboard API Response:', dashboardResponse);
         if (dashboardResponse.data) {
-          setStats(dashboardResponse.data.stats || {
-            total: dashboardResponse.data.total || 0,
-            draft: dashboardResponse.data.draft || 0,
-            submitted: dashboardResponse.data.submitted || 0,
-            inProgress: dashboardResponse.data.inProgress || 0,
-          });
-          setRecentApplications(dashboardResponse.data.recentApplications || []);
+          const responseData = dashboardResponse.data;
+          console.log('Dashboard Data:', responseData);
+          
+          // Handle both direct stats object and nested stats object
+          if (responseData.stats) {
+            setStats({
+              total: responseData.stats.total || 0,
+              draft: responseData.stats.draft || 0,
+              submitted: responseData.stats.submitted || 0,
+              inProgress: responseData.stats.inProgress || 0,
+              approved: responseData.stats.approved || 0,
+              rejected: responseData.stats.rejected || 0,
+              disbursed: responseData.stats.disbursed || 0,
+            });
+          } else {
+            // Fallback to direct properties
+            setStats({
+              total: responseData.total || 0,
+              draft: responseData.draft || 0,
+              submitted: responseData.submitted || 0,
+              inProgress: responseData.inProgress || 0,
+              approved: responseData.approved || 0,
+              rejected: responseData.rejected || 0,
+              disbursed: responseData.disbursed || 0,
+            });
+          }
+          setRecentApplications(responseData.recentApplications || []);
+          // Reset auto-reload prompt flag on successful load
+          if (autoReloadPromptShown) {
+            setAutoReloadPromptShown(false);
+          }
         }
       } catch (err: any) {
-        console.warn('Dashboard endpoint not available, using fallback');
-        const appsResponse = await rmAPI.applications.list({ 
-          limit: 5,
-          assignedTo: user?.id 
-        });
-        if (appsResponse.data?.data) {
-          const apps = appsResponse.data.data;
-          setStats({
-            total: appsResponse.data.pagination?.total || apps.length,
-            draft: apps.filter((a: any) => a.status === 'Draft').length,
-            submitted: apps.filter((a: any) => a.status === 'Submitted').length,
-            inProgress: apps.filter((a: any) => a.status !== 'Draft' && a.status !== 'Submitted').length,
-          });
-          setRecentApplications(apps.slice(0, 5).map((app: any) => ({
-            application_id: app.application_id,
-            status: app.status,
-            requested_amount: app.requested_amount,
-            created_at: app.created_at,
-          })));
+        const statusCode = err.response?.status;
+        const is503 = statusCode === 503;
+        const is429 = statusCode === 429;
+        
+        // Handle 503 (Service Unavailable) - retry with exponential backoff
+        if (is503 && retryCount < MAX_RETRIES) {
+          console.warn(`Dashboard 503 error, retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
+          return loadDashboardData(isRefresh, retryCount + 1);
+        }
+        
+        // Handle 429 (Rate Limit) - retry after delay
+        if (is429 && retryCount < MAX_RETRIES) {
+          const retryAfter = parseInt(err.response?.headers['retry-after'] || '5', 10) * 1000;
+          console.warn(`Dashboard rate limited, retrying after ${retryAfter}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter));
+          return loadDashboardData(isRefresh, retryCount + 1);
+        }
+        
+        // For 503 errors, offer hard refresh option
+        if (is503) {
+          setError(`Service temporarily unavailable. ${err.message || 'Please try again or refresh the page.'}`);
+          // Auto-check if service is back after 5 seconds (only once)
+          if (!autoReloadPromptShown) {
+            setAutoReloadPromptShown(true);
+            setTimeout(async () => {
+              try {
+                // Check if service is back by making a test request
+                await rmAPI.applications.getDashboard();
+                // If successful, prompt once
+                if (window.confirm('Service is back online. Reload the page to refresh?')) {
+                  window.location.reload();
+                } else {
+                  // Reset flag so user can manually refresh later
+                  setAutoReloadPromptShown(false);
+                }
+              } catch (checkErr) {
+                // Service still down, reset flag to allow checking again
+                setAutoReloadPromptShown(false);
+              }
+            }, 5000);
+          }
+        } else {
+          console.warn('Dashboard endpoint not available, using fallback');
+          try {
+            const appsResponse = await rmAPI.applications.list({ 
+              limit: 5,
+              assignedTo: user?.id 
+            });
+            if (appsResponse.data?.data) {
+              const apps = appsResponse.data.data;
+              setStats({
+                total: appsResponse.data.pagination?.total || apps.length,
+                draft: apps.filter((a: any) => a.status === 'Draft').length,
+                submitted: apps.filter((a: any) => a.status === 'Submitted').length,
+                inProgress: apps.filter((a: any) => a.status !== 'Draft' && a.status !== 'Submitted').length,
+              });
+              setRecentApplications(apps.slice(0, 5).map((app: any) => ({
+                application_id: app.application_id,
+                status: app.status,
+                requested_amount: app.requested_amount,
+                created_at: app.created_at,
+              })));
+            }
+          } catch (fallbackErr) {
+            setError(err.message || 'Failed to load dashboard data');
+            setStats({ total: 0, draft: 0, submitted: 0, inProgress: 0 });
+            setRecentApplications([]);
+          }
         }
       }
     } catch (err: any) {
@@ -253,6 +345,40 @@ export default function RMDashboard() {
         </div>
       </div>
 
+      {/* Search Bar - Moved to top */}
+      <Card className="animate-slide-up">
+        <CardContent className="pt-6">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search applications by ID, name, or mobile..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchQuery.trim()) {
+                    navigate(`/rm/applications?search=${encodeURIComponent(searchQuery.trim())}`);
+                  }
+                }}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-base touch-manipulation min-h-[44px]"
+              />
+            </div>
+            <Button
+              onClick={() => {
+                if (searchQuery.trim()) {
+                  navigate(`/rm/applications?search=${encodeURIComponent(searchQuery.trim())}`);
+                }
+              }}
+              disabled={!searchQuery.trim()}
+              className="touch-manipulation min-h-[44px]"
+            >
+              Search
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Error State */}
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start gap-3">
@@ -260,23 +386,54 @@ export default function RMDashboard() {
           <div className="flex-1">
             <p className="font-medium">Error loading dashboard</p>
             <p className="text-sm mt-1">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              className="mt-3 touch-manipulation min-h-[44px]"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
-            </Button>
+            <div className="flex gap-2 mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                className="touch-manipulation min-h-[44px]"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Force hard refresh by clearing cache
+                  if ('caches' in window) {
+                    caches.keys().then(names => {
+                      names.forEach(name => caches.delete(name));
+                    });
+                  }
+                  // Clear localStorage items that might cause stale data
+                  const keysToKeep = ['los_token', 'los_refresh_token', 'los_user'];
+                  const allKeys = Object.keys(localStorage);
+                  allKeys.forEach(key => {
+                    if (!keysToKeep.some(keep => key.includes(keep))) {
+                      localStorage.removeItem(key);
+                    }
+                  });
+                  // Hard refresh
+                  window.location.reload();
+                }}
+                className="touch-manipulation min-h-[44px]"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Hard Refresh
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Statistics Cards */}
+      {/* Statistics Cards - Clickable to filter by status */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Applications */}
-        <Card className="hover:shadow-lg transition-shadow duration-200">
+        {/* Total Applications - Clickable */}
+        <Card 
+          className="hover:shadow-lg transition-shadow duration-200 cursor-pointer active:scale-95"
+          onClick={() => navigate('/rm/applications')}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -292,13 +449,16 @@ export default function RMDashboard() {
               {stats?.total || 0}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">
-              All time
+              All time - Click to view all
             </p>
           </CardContent>
         </Card>
 
-        {/* Draft */}
-        <Card className="hover:shadow-lg transition-shadow duration-200">
+        {/* Draft - Clickable */}
+        <Card 
+          className="hover:shadow-lg transition-shadow duration-200 cursor-pointer active:scale-95"
+          onClick={() => navigate('/rm/applications?status=Draft')}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -314,13 +474,16 @@ export default function RMDashboard() {
               {stats?.draft || 0}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">
-              In progress
+              In progress - Click to view
             </p>
           </CardContent>
         </Card>
 
-        {/* Submitted */}
-        <Card className="hover:shadow-lg transition-shadow duration-200">
+        {/* Submitted - Clickable */}
+        <Card 
+          className="hover:shadow-lg transition-shadow duration-200 cursor-pointer active:scale-95"
+          onClick={() => navigate('/rm/applications?status=Submitted')}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -336,17 +499,27 @@ export default function RMDashboard() {
               {stats?.submitted || 0}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">
-              Awaiting review
+              Awaiting verification - Click to view
             </p>
           </CardContent>
         </Card>
 
-        {/* In Progress */}
-        <Card className="hover:shadow-lg transition-shadow duration-200">
+        {/* Active/In Progress - Clickable */}
+        <Card 
+          className="hover:shadow-lg transition-shadow duration-200 cursor-pointer active:scale-95"
+          onClick={() => {
+            // Navigate with multiple status parameters
+            const params = new URLSearchParams();
+            params.append('status', 'PendingVerification');
+            params.append('status', 'UnderReview');
+            params.append('status', 'InProgress');
+            navigate(`/rm/applications?${params.toString()}`);
+          }}
+        >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                In Progress
+                Active / In Progress
               </CardTitle>
               <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
                 <TrendingUp className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
@@ -358,92 +531,14 @@ export default function RMDashboard() {
               {stats?.inProgress || 0}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">
-              Under review
+              Under verification/review - Click to view
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Actions Panel */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Button
-              variant="outline"
-              onClick={() => navigate('/rm/applications/new')}
-              className="flex flex-col items-center gap-2 h-auto py-4 touch-manipulation min-h-[80px]"
-            >
-              <Plus className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              <span className="text-sm font-medium">New Application</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate('/rm/applications')}
-              className="flex flex-col items-center gap-2 h-auto py-4 touch-manipulation min-h-[80px]"
-            >
-              <FileText className="h-6 w-6 text-green-600 dark:text-green-400" />
-              <span className="text-sm font-medium">View All</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowSearch(!showSearch)}
-              className="flex flex-col items-center gap-2 h-auto py-4 touch-manipulation min-h-[80px]"
-            >
-              <Search className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-              <span className="text-sm font-medium">Search</span>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate('/rm/applications?status=Draft')}
-              className="flex flex-col items-center gap-2 h-auto py-4 touch-manipulation min-h-[80px]"
-            >
-              <FileEdit className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-              <span className="text-sm font-medium">Drafts</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Search Bar */}
-      {showSearch && (
-        <Card className="animate-slide-up">
-          <CardContent className="pt-6">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search applications by ID, name, or mobile..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && searchQuery.trim()) {
-                      navigate(`/rm/applications?search=${encodeURIComponent(searchQuery.trim())}`);
-                    }
-                  }}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-base touch-manipulation min-h-[44px]"
-                />
-              </div>
-              <Button
-                onClick={() => {
-                  if (searchQuery.trim()) {
-                    navigate(`/rm/applications?search=${encodeURIComponent(searchQuery.trim())}`);
-                  }
-                }}
-                disabled={!searchQuery.trim()}
-                className="touch-manipulation min-h-[44px]"
-              >
-                Search
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Application Pipeline Chart */}
+      {/* Application Pipeline Chart - Includes all statuses */}
       {stats && stats.total > 0 && (
         <Card>
           <CardHeader>
@@ -451,25 +546,31 @@ export default function RMDashboard() {
               <div>
                 <CardTitle>Application Pipeline</CardTitle>
                 <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
-                  Status distribution
+                  Status distribution across all stages
                 </p>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
+            <ResponsiveContainer width="100%" height={300}>
               <BarChart
                 data={[
-                  { name: 'Draft', value: stats.draft },
-                  { name: 'Submitted', value: stats.submitted },
-                  { name: 'In Progress', value: stats.inProgress },
+                  { name: 'Draft', value: stats.draft || 0 },
+                  { name: 'Submitted', value: stats.submitted || 0 },
+                  { name: 'In Progress', value: stats.inProgress || 0 },
+                  { name: 'Approved', value: stats.approved || 0 },
+                  { name: 'Rejected', value: stats.rejected || 0 },
+                  { name: 'Disbursed', value: stats.disbursed || 0 },
                 ]}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis 
                   dataKey="name" 
                   stroke="#64748b"
-                  style={{ fontSize: '12px' }}
+                  style={{ fontSize: '11px' }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
                 />
                 <YAxis 
                   stroke="#64748b"
@@ -486,8 +587,21 @@ export default function RMDashboard() {
                 <Bar 
                   dataKey="value" 
                   radius={[8, 8, 0, 0]}
-                  fill="#3b82f6"
-                />
+                >
+                  {[
+                    { name: 'Draft', value: stats.draft || 0 },
+                    { name: 'Submitted', value: stats.submitted || 0 },
+                    { name: 'In Progress', value: stats.inProgress || 0 },
+                    { name: 'Approved', value: stats.approved || 0 },
+                    { name: 'Rejected', value: stats.rejected || 0 },
+                    { name: 'Disbursed', value: stats.disbursed || 0 },
+                  ].map((entry, index) => {
+                    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#22c55e', '#ef4444', '#8b5cf6'];
+                    return (
+                      <Cell key={`cell-${index}`} fill={colors[index]} />
+                    );
+                  })}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

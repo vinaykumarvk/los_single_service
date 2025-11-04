@@ -133,7 +133,7 @@ export default function RMEmploymentDetails() {
         businessName: data.businessName,
         monthlyIncome: parseFloat(data.monthlyIncome),
         yearsInJob: data.yearsInJob ? parseFloat(data.yearsInJob) : undefined,
-        otherIncomeSources: data.otherIncomeSources || undefined,
+        otherIncomeSources: data.otherIncomeSources ? parseFloat(data.otherIncomeSources) : undefined,
       });
 
       addToast({

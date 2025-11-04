@@ -29,6 +29,7 @@ export const rmAPI = {
       requestedAmount: number;
       requestedTenureMonths: number;
       channel?: string;
+      applicantId: string;
     }) =>
       apiClient.post('/api/applications', data),
 
@@ -61,6 +62,15 @@ export const rmAPI = {
 
   // Applicants
   applicants: {
+    create: (applicantId: string, data: {
+      firstName?: string;
+      lastName?: string;
+      dateOfBirth?: string;
+      mobile?: string;
+      email?: string;
+    }) =>
+      apiClient.put(`/api/applicants/${applicantId}`, data),
+    
     update: (applicationId: string, data: {
       firstName: string;
       lastName: string;
@@ -206,6 +216,24 @@ export const rmAPI = {
       getReport: (requestId: string) =>
         apiClient.get(`/api/integrations/bureau/${requestId}/report`),
     },
+  },
+
+  // Property
+  property: {
+    get: (applicationId: string) =>
+      apiClient.get(`/api/applications/${applicationId}/property`),
+    
+    createOrUpdate: (applicationId: string, data: {
+      propertyType: string;
+      builderName?: string;
+      projectName?: string;
+      propertyValue?: number;
+      propertyAddress?: string;
+      propertyPincode?: string;
+      propertyCity?: string;
+      propertyState?: string;
+    }) =>
+      apiClient.post(`/api/applications/${applicationId}/property`, data),
   },
 
   // Masters

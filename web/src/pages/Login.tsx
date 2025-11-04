@@ -41,16 +41,18 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate]);
 
-  // Real-time validation
+  // Real-time validation - relaxed for RM usernames like "rm1"
   const validateField = (field: 'username' | 'password', value: string) => {
     const errors: { username?: string; password?: string } = {};
     
     if (field === 'username') {
-      if (!value.trim()) {
+      const trimmed = value.trim();
+      if (!trimmed) {
         errors.username = 'Username is required';
-      } else if (value.trim().length < 3) {
-        errors.username = 'Username must be at least 3 characters';
+      } else if (trimmed.length < 2) {
+        errors.username = 'Username must be at least 2 characters';
       }
+      // If valid, no error
     }
     
     if (field === 'password') {
@@ -59,9 +61,28 @@ export default function Login() {
       } else if (value.length < 6) {
         errors.password = 'Password must be at least 6 characters';
       }
+      // If valid, no error
     }
     
-    setFieldErrors(prev => ({ ...prev, ...errors }));
+    // Update errors - clear if no error, set if there is one
+    setFieldErrors(prev => {
+      const newErrors = { ...prev };
+      if (field === 'username') {
+        if (errors.username) {
+          newErrors.username = errors.username;
+        } else {
+          delete newErrors.username;
+        }
+      }
+      if (field === 'password') {
+        if (errors.password) {
+          newErrors.password = errors.password;
+        } else {
+          delete newErrors.password;
+        }
+      }
+      return newErrors;
+    });
     return Object.keys(errors).length === 0;
   };
 
@@ -139,7 +160,8 @@ export default function Login() {
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setUsername(value);
-    if (fieldErrors.username) {
+    // Only validate if there was a previous error or if user has typed something
+    if (fieldErrors.username || value.trim().length > 0) {
       validateField('username', value);
     }
   };
@@ -147,7 +169,8 @@ export default function Login() {
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setPassword(value);
-    if (fieldErrors.password) {
+    // Only validate if there was a previous error or if user has typed something
+    if (fieldErrors.password || value.length > 0) {
       validateField('password', value);
     }
   };
@@ -423,7 +446,13 @@ export default function Login() {
                 {/* Submit Button */}
                 <Button 
                   type="submit" 
-                  disabled={loading || !username.trim() || !password || !!fieldErrors.username || !!fieldErrors.password} 
+                  disabled={
+                    loading || 
+                    !username.trim() || 
+                    !password || 
+                    (fieldErrors.username ? fieldErrors.username.trim() !== '' : false) || 
+                    (fieldErrors.password ? fieldErrors.password.trim() !== '' : false)
+                  } 
                   className="w-full h-12 sm:h-11 text-base sm:text-sm font-semibold
                     shadow-lg hover:shadow-xl transition-all duration-200
                     disabled:opacity-50 disabled:cursor-not-allowed

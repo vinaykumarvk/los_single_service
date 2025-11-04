@@ -40,26 +40,54 @@ export default function RMApplicationsList() {
   
   // Filters
   const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get('status') || 'all');
+  // Handle multiple status parameters (for In Progress which includes multiple statuses)
+  const statusParam = searchParams.get('status');
+  const allStatusParams = searchParams.getAll('status');
+  const [statusFilter, setStatusFilter] = useState<string>(
+    allStatusParams.length > 0 
+      ? (allStatusParams.length === 1 ? allStatusParams[0] : 'inProgress') // If multiple, treat as inProgress
+      : (statusParam || 'all')
+  );
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const limit = 20;
 
+  // Sync status filter and search from URL params when they change
   useEffect(() => {
-    loadApplications();
-  }, [statusFilter, page]);
-
-  // Load search from URL params
-  useEffect(() => {
-    const urlSearch = searchParams.get('search');
-    if (urlSearch) {
-      setSearch(urlSearch);
+    const urlSearch = searchParams.get('search') || '';
+    const statusParam = searchParams.get('status');
+    const allStatusParams = searchParams.getAll('status');
+    
+    // Update search from URL
+    setSearch(urlSearch);
+    
+    // Update status filter from URL
+    let newStatusFilter: string;
+    if (allStatusParams.length > 0) {
+      newStatusFilter = allStatusParams.length === 1 ? allStatusParams[0] : 'inProgress';
+    } else {
+      newStatusFilter = statusParam || 'all';
     }
+    
+    setStatusFilter(newStatusFilter);
+    setPage(1); // Reset to first page when URL params change
   }, [searchParams]);
 
+  useEffect(() => {
+    if (user?.id) {
+      loadApplications();
+    }
+  }, [statusFilter, page, search, user?.id]);
+
   const loadApplications = async (isRefresh = false) => {
+    // Guard: Don't load if user is not available
+    if (!user?.id) {
+      console.warn('Cannot load applications: user ID not available');
+      return;
+    }
+
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -71,7 +99,7 @@ export default function RMApplicationsList() {
       const params: any = {
         page,
         limit,
-        assignedTo: user?.id,
+        assignedTo: user.id,
       };
 
       if (search) {
@@ -79,15 +107,55 @@ export default function RMApplicationsList() {
       }
 
       if (statusFilter !== 'all') {
-        params.status = [statusFilter];
+        // Handle special case for "inProgress" which includes multiple statuses
+        if (statusFilter === 'inProgress') {
+          params.status = ['PendingVerification', 'UnderReview', 'InProgress'];
+        } else {
+          params.status = [statusFilter];
+        }
       }
 
       const response = await rmAPI.applications.list(params);
       
+      console.log('Applications API Response:', response);
+      
       if (response.data) {
-        setApplications(response.data.data || []);
-        setTotal(response.data.pagination?.total || 0);
-        setTotalPages(response.data.pagination?.totalPages || 1);
+        // Handle different response structures
+        const responseData = response.data;
+        let apps: any[] = [];
+        let totalCount = 0;
+        let totalPagesCount = 1;
+        
+        // Standard API format: { applications: [...], pagination: {...} }
+        if (responseData.applications && Array.isArray(responseData.applications)) {
+          apps = responseData.applications;
+          totalCount = responseData.pagination?.total || 0;
+          totalPagesCount = responseData.pagination?.totalPages || 1;
+        }
+        // Alternative format: { data: [...], pagination: {...} }
+        else if (responseData.data && Array.isArray(responseData.data)) {
+          apps = responseData.data;
+          totalCount = responseData.pagination?.total || responseData.total || apps.length;
+          totalPagesCount = responseData.pagination?.totalPages || responseData.totalPages || 1;
+        }
+        // Direct array
+        else if (Array.isArray(responseData)) {
+          apps = responseData;
+          totalCount = responseData.length;
+        }
+        
+        console.log('Parsed applications:', apps);
+        console.log('Total count:', totalCount);
+        console.log('Applications array length:', apps.length);
+        
+        setApplications(apps);
+        setTotal(totalCount);
+        setTotalPages(totalPagesCount);
+      } else {
+        console.warn('No data in response:', response);
+        setApplications([]);
+        setTotal(0);
+        setTotalPages(1);
       }
     } catch (err: any) {
       console.error('Failed to load applications:', err);
@@ -410,7 +478,7 @@ export default function RMApplicationsList() {
                             </button>
                             {app.status === 'Draft' && (
                               <button
-                                onClick={() => app.application_id && navigate(`/rm/applications/${app.application_id}/personal`)}
+                                onClick={() => app.application_id && navigate(`/rm/applications/${app.application_id}/wizard`)}
                                 className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 font-medium transition-colors touch-manipulation min-h-[44px] min-w-[44px] flex items-center gap-2"
                               >
                                 <FileEdit className="h-4 w-4" />
@@ -492,11 +560,11 @@ export default function RMApplicationsList() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => navigate(`/rm/applications/${app.application_id}/personal`)}
+                            onClick={() => navigate(`/rm/applications/${app.application_id}/wizard`)}
                             className="flex-1 touch-manipulation min-h-[44px]"
                           >
                             <FileEdit className="h-4 w-4 mr-2" />
-                            Edit
+                            Continue
                           </Button>
                         )}
                       </div>

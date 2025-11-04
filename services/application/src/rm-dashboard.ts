@@ -12,13 +12,23 @@ export function setupRMDashboardEndpoint(app: any, pool: Pool) {
   app.get('/api/applications/rm/dashboard', async (req: Request, res: Response) => {
     try {
       // Get current user from request (set by API gateway auth middleware)
-      const userId = (req as any).user?.id || (req as any).user?.sub;
+      // Check both req.user (if middleware populated it) and headers (if gateway forwarded it)
+      const userId = (req as any).user?.id || 
+                     (req as any).user?.sub || 
+                     req.headers['x-user-id'] as string ||
+                     req.headers['X-User-Id'] as string;
       
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized. User ID required.' });
       }
 
       // Calculate statistics for applications assigned to this RM
+      // Aligned with Svatantra requirements:
+      // - Draft: Applications being created by RM
+      // - Submitted: Applications submitted by RM, awaiting processing/verification
+      // - Active/In Progress: Applications actively being processed (PendingVerification, UnderReview, InProgress)
+      // - Approved: Applications approved for disbursement
+      // - Rejected: Applications rejected during review
       const statsQuery = `
         SELECT 
           COUNT(*) FILTER (WHERE status = 'Draft') as draft_count,

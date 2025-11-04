@@ -36,6 +36,19 @@ export default defineConfig({
     host: '0.0.0.0',
     strictPort: false,
     allowedHosts: true,
+    proxy: {
+      '/api/auth': {
+        target: 'http://localhost:3016', // Auth service - direct connection, bypassing gateway
+        changeOrigin: true,
+        secure: false,
+        timeout: 30000,
+      },
+      '/api': {
+        target: 'http://localhost:3000', // Gateway for other API calls
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   build: {
     outDir: buildConfig.outDir,

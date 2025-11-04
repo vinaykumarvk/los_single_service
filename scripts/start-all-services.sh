@@ -35,8 +35,8 @@ fi
 # Service definitions: (directory, port, name)
 declare -a SERVICES=(
     "services/application:3001:Application Service"
-    "services/auth:3002:Auth Service"
-    "services/kyc:3003:KYC Service"
+    "services/auth:3016:Auth Service"
+    "services/customer-kyc:3003:KYC Service"
     "services/document:3004:Document Service"
     "services/masters:3005:Masters Service"
     "services/underwriting:3006:Underwriting Service"
@@ -46,6 +46,7 @@ declare -a SERVICES=(
     "reporting:3015:Reporting Service"
     "services/scoring:3018:Scoring Service"
     "services/analytics:3019:Analytics Service"
+    "services/integration-hub:3020:Integration Hub"
     "gateway:3000:API Gateway"
 )
 
@@ -61,7 +62,20 @@ for service_info in "${SERVICES[@]}"; do
     
     # Check if port is already in use
     if lsof -ti:$port > /dev/null 2>&1; then
-        echo -e "${YELLOW}⚠️  Port $port already in use, skipping...${NC}"
+        echo -e "${YELLOW}⚠️  Port $port already in use${NC}"
+        
+        # Check if it's our own service process
+        EXISTING_PID=$(lsof -ti:$port | head -1)
+        if [ ! -z "$EXISTING_PID" ]; then
+            EXISTING_CMD=$(ps -p $EXISTING_PID -o comm= 2>/dev/null || echo "")
+            if echo "$EXISTING_CMD" | grep -qE "node|ts-node"; then
+                echo -e "${GREEN}   ✅ Service already running (PID: $EXISTING_PID)${NC}"
+                STARTED=$((STARTED + 1))
+                continue
+            fi
+        fi
+        
+        echo -e "${YELLOW}   Skipping (port conflict)${NC}"
         continue
     fi
     
@@ -80,6 +94,13 @@ for service_info in "${SERVICES[@]}"; do
     
     # Start service in background
     cd "$dir" || continue
+    
+    # Set PORT and DATABASE_URL environment variables for services that need them
+    export PORT=$port
+    # Ensure DATABASE_URL is set (services will use default if not provided)
+    if [ -z "$DATABASE_URL" ]; then
+      export DATABASE_URL="postgres://los:los@localhost:5432/los"
+    fi
     
     # Install dependencies if node_modules doesn't exist
     if [ ! -d "node_modules" ]; then

@@ -4,7 +4,7 @@
  * Can also run in 'all' mode for full application
  */
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Dashboard from '../pages/Dashboard';
 import Applications from '../pages/Applications';
@@ -22,137 +22,65 @@ import AuthGuard from '../components/AuthGuard';
 import { ToastProvider } from '../components/ui/Toast';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import CommandPalette, { useCommandPalette } from '../components/ui/CommandPalette';
+import { useAuth } from '../shared/hooks/useAuth';
 import '../index.css';
 
-// Import persona-specific routes
+// Import RM routes
 import { RMRoutes } from '../rm/routes';
-import { config } from '../shared/lib/config';
-import { useAuth } from '../shared/hooks/useAuth';
+
+// Component to handle root route authentication check
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 function AppContent() {
   const commandPalette = useCommandPalette();
-  const { user } = useAuth();
-  
-  // Determine persona from user roles if authenticated, otherwise from config
-  const getPersonaFromUser = () => {
-    if (!user || !user.roles || user.roles.length === 0) {
-      return null;
-    }
-    
-    // Check user roles to determine persona
-    if (user.roles.includes('rm') || user.roles.includes('relationship_manager')) {
-      return 'rm';
-    }
-    if (user.roles.includes('admin')) {
-      return 'admin';
-    }
-    if (user.roles.includes('ops') || user.roles.includes('operations')) {
-      return 'operations';
-    }
-    return null;
-  };
-  
-  // Get persona from user roles first, then config, then default to 'all'
-  // IMPORTANT: Only use config persona if user is authenticated
-  // If not authenticated, always use 'all' to show login screen
-  let persona: 'rm' | 'admin' | 'operations' | 'all';
-  
-  if (user && user.roles && user.roles.length > 0) {
-    // User is authenticated - determine persona from roles
-    persona = getPersonaFromUser() || 'all';
-  } else {
-    // User is NOT authenticated - always use 'all' to show login screen
-    // Don't use config persona when not authenticated
-    persona = 'all';
-  }
 
-  // If persona is 'rm', show only RM routes
-  // BUT: Only if user is authenticated, otherwise show login
-  if (persona === 'rm') {
-    return (
-      <BrowserRouter>
-        <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/callback" element={<Callback />} />
-          <Route
-            path="/"
-            element={
-              <AuthGuard>
-                <RMRoutes />
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/*"
-            element={
-              <AuthGuard>
-                <RMRoutes />
-              </AuthGuard>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
-  }
-
-  // If persona is 'admin' or 'operations', show respective routes (when implemented)
-  if (persona === 'admin') {
-    return (
-      <BrowserRouter>
-        <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/callback" element={<Callback />} />
-          <Route
-            path="/*"
-            element={
-              <AuthGuard>
-                {/* TODO: Add AdminRoutes when implemented */}
-                <div>Admin routes (coming soon)</div>
-              </AuthGuard>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
-  }
-
-  if (persona === 'operations') {
-    return (
-      <BrowserRouter>
-        <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/callback" element={<Callback />} />
-          <Route
-            path="/*"
-            element={
-              <AuthGuard>
-                {/* TODO: Add OperationsRoutes when implemented */}
-                <div>Operations routes (coming soon)</div>
-              </AuthGuard>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
-  }
-
-  // Default: 'all' persona - show all routes with persona prefixes
   return (
     <BrowserRouter>
       <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
       <Routes>
+        {/* Public routes - no auth required */}
         <Route path="/login" element={<Login />} />
         <Route path="/callback" element={<Callback />} />
+        
+        {/* RM routes - require auth */}
+        <Route path="/rm" element={<AuthGuard><RMRoutes /></AuthGuard>} />
+        <Route path="/rm/*" element={<AuthGuard><RMRoutes /></AuthGuard>} />
+        
+        {/* Default route - always redirect to login if not authenticated */}
+        <Route 
+          path="/" 
+          element={
+            <RequireAuth>
+              <RMRoutes />
+            </RequireAuth>
+          } 
+        />
+        
+        {/* All other routes - require auth with Layout */}
         <Route
           path="/*"
           element={
             <AuthGuard>
               <Layout>
                 <Routes>
-                  {/* Existing routes */}
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/applications" element={<Applications />} />
                   <Route path="/applications/new" element={<ApplicationNew />} />
@@ -163,9 +91,6 @@ function AppContent() {
                   <Route path="/applications/:id/payments" element={<Payments />} />
                   <Route path="/applications/:id/disbursement" element={<Disbursement />} />
                   <Route path="/kyc" element={<KycUpsert />} />
-                  
-                  {/* RM routes (when persona is 'all') */}
-                  <Route path="/rm/*" element={<RMRoutes />} />
                 </Routes>
               </Layout>
             </AuthGuard>

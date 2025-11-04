@@ -31,9 +31,16 @@ export class APIClient {
       },
     });
 
-    // Add auth token interceptor
+    // Add auth token and request logging interceptor
     this.axiosInstance.interceptors.request.use(
       async (axiosConfig) => {
+        // Log request
+        console.log('[API] Making request', { 
+          url: axiosConfig.url, 
+          method: axiosConfig.method,
+          baseURL: axiosConfig.baseURL 
+        });
+        
         // Skip auth if explicitly requested
         if ((axiosConfig as APIRequestConfig).skipAuth) {
           return axiosConfig;
@@ -44,9 +51,16 @@ export class APIClient {
           if (token) {
             axiosConfig.headers = axiosConfig.headers || {};
             axiosConfig.headers.Authorization = `Bearer ${token}`;
+            console.log('[API] Auth token added to request', { 
+              url: axiosConfig.url, 
+              hasToken: !!token,
+              tokenLength: token?.length 
+            });
+          } else {
+            console.warn('[API] No auth token available', { url: axiosConfig.url });
           }
         } catch (error) {
-          console.warn('Failed to get auth token:', error);
+          console.warn('[API] Failed to get auth token:', error);
         }
 
         return axiosConfig;
@@ -56,8 +70,34 @@ export class APIClient {
 
     // Response interceptor for error handling
     this.axiosInstance.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // Log successful responses for debugging
+        console.log('[API] Request successful', { 
+          url: response.config.url, 
+          method: response.config.method,
+          status: response.status 
+        });
+        return response;
+      },
       async (error) => {
+        // Log errors with details
+        const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+        const errorDetails = {
+          url: error.config?.url,
+          method: error.config?.method,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          isTimeout,
+          message: error.message,
+          code: error.code,
+        };
+        
+        if (isTimeout) {
+          console.error('[API] Request timeout', errorDetails);
+        } else {
+          console.error('[API] Request failed', errorDetails);
+        }
+        
         // Handle 401 Unauthorized - try to refresh token
         if (error.response?.status === 401) {
           try {

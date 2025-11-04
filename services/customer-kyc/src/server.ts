@@ -593,7 +593,9 @@ app.post('/api/kyc/:applicationId/video/complete', async (req, res) => {
 
 // Only start server if this file is run directly (not imported for tests)
 if (require.main === module) {
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
+  // Default port is 3003 to match gateway configuration
+  // Gateway routes /api/applicants to http://localhost:3003
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3003;
   app.listen(port, () => {
     logger.info('CustomerKYCServiceStarted', { port });
   });

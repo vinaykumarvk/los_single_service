@@ -17,7 +17,11 @@ export class JWTAuthProvider implements AuthProvider {
 
   async login(credentials: LoginCredentials): Promise<AuthResult> {
     try {
-      const response = await fetch(this.config!.loginEndpoint, {
+      const loginUrl = this.config!.loginEndpoint;
+      console.log('🔐 Attempting login to:', loginUrl);
+      console.log('📝 Username:', credentials.username);
+      
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -28,12 +32,33 @@ export class JWTAuthProvider implements AuthProvider {
         }),
       });
 
+      console.log('📡 Response status:', response.status, response.statusText);
+      // Headers might not support entries() in all environments
+      try {
+        const headersObj: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          headersObj[key] = value;
+        });
+        console.log('📡 Response headers:', headersObj);
+      } catch (e) {
+        console.log('📡 Response headers: (unable to read)');
+      }
+
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Login failed' }));
-        throw new Error(error.error || 'Login failed');
+        const errorText = await response.text();
+        console.error('❌ Login failed - Response:', errorText);
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: errorText || 'Login failed' };
+        }
+        throw new Error(error.error || error.message || 'Login failed');
       }
 
       const data = await response.json();
+      console.log('✅ Login successful - Response:', { ...data, accessToken: data.accessToken ? '***' : null });
+      
       const token = data.accessToken || data.token;
       const refreshToken = data.refreshToken;
 
@@ -57,8 +82,12 @@ export class JWTAuthProvider implements AuthProvider {
       }
 
       throw new Error('No token received from server');
-    } catch (error) {
+    } catch (error: any) {
       console.error('JWT Login Error:', error);
+      // If it's a network error, provide more helpful message
+      if (error.message?.includes('fetch') || error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
+        throw new Error('Network error: Unable to connect to authentication service. Please check if the server is running.');
+      }
       throw error;
     }
   }
@@ -92,25 +121,58 @@ export class JWTAuthProvider implements AuthProvider {
   async getToken(): Promise<string | null> {
     const token = localStorage.getItem(this.storageKey);
     
-    // Check if token is expired (basic check)
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const expiresAt = payload.exp * 1000; // Convert to milliseconds
-        
-        if (Date.now() >= expiresAt) {
-          // Token expired, try to refresh
-          const refreshed = await this.refreshToken();
-          return refreshed;
-        }
-      } catch (err) {
-        // If parsing fails, assume token is invalid
-        console.warn('Token parsing failed:', err);
-        return null;
-      }
+    // If no token, return null
+    if (!token) {
+      // Ensure user data is also cleared
+      localStorage.removeItem(`${this.storageKey}_user`);
+      return null;
     }
     
-    return token;
+    // Validate token format first
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      // Invalid token format, clear everything
+      console.log('[JWT] Invalid token format, clearing...');
+      localStorage.removeItem(this.storageKey);
+      localStorage.removeItem(`${this.storageKey}_refresh`);
+      localStorage.removeItem(`${this.storageKey}_user`);
+      return null;
+    }
+    
+    // Check if token is expired (basic check)
+    try {
+      
+      const payload = JSON.parse(atob(parts[1]));
+      
+      // Check if token has expiration
+      if (!payload.exp) {
+        // No expiration, assume invalid
+        console.warn('Token has no expiration, clearing...');
+        await this.logout();
+        return null;
+      }
+      
+      const expiresAt = payload.exp * 1000; // Convert to milliseconds
+      
+      // Add 5 second buffer to account for clock skew
+      if (Date.now() >= (expiresAt - 5000)) {
+        // Token expired or about to expire, try to refresh
+        const refreshed = await this.refreshToken();
+        if (!refreshed) {
+          // Refresh failed, clear everything
+          await this.logout();
+          return null;
+        }
+        return refreshed;
+      }
+      
+      return token;
+    } catch (err) {
+      // If parsing fails, assume token is invalid - clear everything
+      console.warn('Token parsing failed, clearing:', err);
+      await this.logout();
+      return null;
+    }
   }
 
   async getAccessToken(): Promise<string | null> {
@@ -162,36 +224,72 @@ export class JWTAuthProvider implements AuthProvider {
 
   async isAuthenticated(): Promise<boolean> {
     const token = await this.getToken();
-    return token !== null;
+    if (!token) {
+      return false;
+    }
+    
+    // Also verify user exists - token alone is not enough
+    const user = await this.getUser();
+    return user !== null;
   }
 
   async getUser(): Promise<User | null> {
+    // First, validate token exists and is not expired
+    const token = await this.getToken();
+    if (!token) {
+      // No valid token, clear any stale user data
+      localStorage.removeItem(`${this.storageKey}_user`);
+      return null;
+    }
+
+    // Token exists and is valid (not expired), now get user data
     const userStr = localStorage.getItem(`${this.storageKey}_user`);
     if (userStr) {
       try {
-        return JSON.parse(userStr);
+        const user = JSON.parse(userStr);
+        // Verify token is still valid by checking expiration
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const expiresAt = payload.exp * 1000;
+          if (Date.now() >= expiresAt) {
+            // Token expired, clear everything
+            await this.logout();
+            return null;
+          }
+          return user;
+        } catch {
+          // Token parsing failed, clear everything
+          await this.logout();
+          return null;
+        }
       } catch {
-        return null;
+        // User data parsing failed, clear it
+        localStorage.removeItem(`${this.storageKey}_user`);
       }
     }
 
-    // If no user in storage, token might have user info
-    const token = await this.getToken();
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return {
-          id: payload.sub || payload.sub || payload.user_id,
-          username: payload.username || payload.preferred_username,
-          email: payload.email,
-          roles: payload.roles || payload.authorities || [],
-        };
-      } catch {
+    // If no user in storage, try to extract from token
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiresAt = payload.exp * 1000;
+      
+      // Check if token is expired
+      if (Date.now() >= expiresAt) {
+        await this.logout();
         return null;
       }
-    }
 
-    return null;
+      return {
+        id: payload.sub || payload.sub || payload.user_id,
+        username: payload.username || payload.preferred_username,
+        email: payload.email,
+        roles: payload.roles || payload.authorities || [],
+      };
+    } catch {
+      // Token parsing failed, clear everything
+      await this.logout();
+      return null;
+    }
   }
 
   async handleCallback(): Promise<User | null> {

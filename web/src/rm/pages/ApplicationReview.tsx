@@ -178,9 +178,15 @@ export default function RMApplicationReview() {
         message: 'Application submitted successfully for verification',
       });
 
-      // Navigate to status page
+      // Refresh dashboard by navigating to it (this will trigger a refresh)
+      // Then navigate to status page
       setTimeout(() => {
-        navigate(`/rm/applications/${id}/status`);
+        // Navigate to dashboard to refresh it
+        navigate('/rm?refresh=true');
+        // Then navigate to status page after a brief delay
+        setTimeout(() => {
+          navigate(`/rm/applications/${id}/status`);
+        }, 500);
       }, 1500);
     } catch (err: any) {
       console.error('Failed to submit application:', err);
