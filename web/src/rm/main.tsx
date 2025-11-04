@@ -8,6 +8,8 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, useSearchParams } from 'react-router-dom';
 import { RMRoutes } from './routes';
 import Login from '../shared/pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { ToastProvider } from '../components/ui/Toast';
 import '../index.css';
@@ -36,6 +38,8 @@ function App() {
     <Routes>
       <Route path="/callback" element={<CallbackHandler />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/rm/forgot-password" element={<ForgotPassword />} />
+      <Route path="/rm/reset-password" element={<ResetPassword />} />
       <Route path="/*" element={<RMRoutes />} />
     </Routes>
   );

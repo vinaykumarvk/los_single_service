@@ -1,234 +1,145 @@
 /**
- * New Application Creation Page
- * Quick form to create a new application and start the capture process
+ * New Application Creation - Simplified Flow
+ * Step 1: Capture basic loan details and create application
+ * After creation, navigates to personal information step
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../shared/hooks/useAuth';
+import { useToast as useToastHook } from '../../components/ui/Toast';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import { Loader2, Plus } from 'lucide-react';
 import { rmAPI } from '../lib/api';
-import { useAuth } from '../../shared/hooks/useAuth';
-import { useToast as useToastHook } from '../../components/ui/Toast';
-import { z } from 'zod';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowRight, Loader2 } from 'lucide-react';
-
-const newApplicationSchema = z.object({
-  productCode: z.enum(['HOME_LOAN_V1', 'PERSONAL_LOAN_V1', 'BALANCE_TRANSFER_V1'], {
-    required_error: 'Please select a loan type',
-  }),
-  requestedAmount: z.string()
-    .min(1, 'Loan amount is required')
-    .refine((val) => {
-      const amount = parseFloat(val);
-      return !isNaN(amount) && amount > 0;
-    }, 'Loan amount must be greater than 0')
-    .refine((val) => {
-      const amount = parseFloat(val);
-      return amount >= 50000; // Minimum loan amount
-    }, 'Minimum loan amount is ₹50,000')
-    .refine((val) => {
-      const amount = parseFloat(val);
-      return amount <= 50000000; // Maximum loan amount
-    }, 'Maximum loan amount is ₹5,00,00,000'),
-  requestedTenureMonths: z.string()
-    .min(1, 'Tenure is required')
-    .refine((val) => {
-      const months = parseFloat(val);
-      // Accept both years (1-30) and months (12-360)
-      // If value is <= 30, treat as years and convert to months
-      const finalMonths = months <= 30 ? months * 12 : months;
-      return !isNaN(finalMonths) && finalMonths >= 12 && finalMonths <= 360;
-    }, 'Tenure must be between 1-30 years (12-360 months)'),
-  channel: z.enum(['Branch', 'DSA', 'Online', 'Mobile'], {
-    required_error: 'Please select a channel',
-  }),
-});
-
-type NewApplicationForm = z.infer<typeof newApplicationSchema>;
 
 export default function NewApplication() {
-  console.log('[NewApplication] ✅ Component function called - ROUTE MATCHED!');
-  
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { addToast } = useToastHook();
+  
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  // Set mounted flag after component mounts
-  useEffect(() => {
-    setMounted(true);
-    console.log('[NewApplication] Component mounted');
-  }, []);
-
-  // Debug logging
-  useEffect(() => {
-    console.log('[NewApplication] Component render', {
-      authLoading,
-      hasUser: !!user,
-      userId: user?.id,
-      username: user?.username,
-      pathname: window.location.pathname,
-      mounted
-    });
-  }, [authLoading, user, mounted]);
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (mounted && !authLoading && !user?.id) {
-      console.warn('[NewApplication] User not authenticated, redirecting to login');
-      navigate('/login', { replace: true });
-    }
-  }, [mounted, authLoading, user?.id, navigate]);
-
-  // Show loading state while auth is being checked or not mounted
-  if (!mounted || authLoading) {
-    console.log('[NewApplication] Showing loading state', { mounted, authLoading });
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in safe-area-inset p-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-          <span className="ml-3 text-gray-600 dark:text-gray-400">Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error if user is not authenticated (single check)
-  if (!user || !user.id) {
-    console.warn('[NewApplication] User not available', { user, authLoading });
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in safe-area-inset p-6">
-        <div className="text-center py-12">
-          <p className="text-gray-600 dark:text-gray-400">Redirecting to login...</p>
-        </div>
-      </div>
-    );
-  }
-
-  console.log('[NewApplication] Rendering form for user:', user.id);
-
-  // Initialize form - moved outside try-catch to simplify
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    watch,
-  } = useForm<NewApplicationForm>({
-    resolver: zodResolver(newApplicationSchema),
-    defaultValues: {
-      channel: 'Mobile',
-      productCode: undefined,
-      requestedAmount: '500000',
-      requestedTenureMonths: '20',
-    },
+  const [formData, setFormData] = useState({
+    productCode: '',
+    requestedAmount: '500000',
+    requestedTenureYears: '20',
+    channel: 'Mobile',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const selectedProduct = watch('productCode');
+  // Validate form
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.productCode) {
+      newErrors.productCode = 'Please select a loan type';
+    }
+    
+    const amount = parseFloat(formData.requestedAmount);
+    if (!amount || amount < 50000 || amount > 50000000) {
+      newErrors.requestedAmount = 'Amount must be between ₹50,000 and ₹5,00,00,000';
+    }
+    
+    const years = parseFloat(formData.requestedTenureYears);
+    if (!years || years < 1 || years > 30) {
+      newErrors.requestedTenureYears = 'Tenure must be between 1-30 years';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
-  const onSubmit = async (data: NewApplicationForm) => {
-    if (!user || !user.id) {
-      addToast({
-        type: 'error',
-        message: 'User not authenticated. Please login again.',
-      });
+  // Handle form submission - Create application and navigate to personal info
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log('[NewApplication] Form submitted', { formData, user: user?.id });
+    
+    if (!validate()) {
+      console.log('[NewApplication] Validation failed');
+      addToast({ type: 'error', message: 'Please fix the errors in the form' });
+      return;
+    }
+
+    if (!user?.id) {
+      console.log('[NewApplication] User not authenticated');
+      addToast({ type: 'error', message: 'User not authenticated' });
       return;
     }
 
     try {
       setLoading(true);
-      setError(null);
-
-      // Generate applicant ID using crypto API (available in modern browsers)
-      const applicantId = crypto.randomUUID();
-      console.log('[NewApplication] Starting creation flow', { applicantId, userId: user.id });
-
-      // Create a minimal applicant record first (required by application service)
-      // This will be updated with full details when personal info is saved
-      try {
-        console.log('[NewApplication] Creating applicant record...');
-        const applicantStartTime = Date.now();
-        await rmAPI.applicants.create(applicantId, {
-          firstName: 'New',
-          lastName: 'Applicant',
-        });
-        console.log('[NewApplication] Applicant created successfully', { duration: Date.now() - applicantStartTime });
-      } catch (applicantErr: any) {
-        // If applicant creation fails, log but continue - it might be created later
-        console.warn('[NewApplication] Applicant creation failed (continuing anyway):', applicantErr?.message || 'See console for details', applicantErr);
-      }
-
-      // Create the application with the applicant ID
-      // The backend will create the application in Draft status
-      console.log('[NewApplication] Creating application...', {
-        productCode: data.productCode,
-        requestedAmount: parseFloat(data.requestedAmount),
-        requestedTenureMonths: Math.round(parseFloat(data.requestedTenureMonths)),
-        channel: data.channel,
-        applicantId,
-      });
-      const applicationStartTime = Date.now();
-      // Convert years to months if needed (if value <= 30, treat as years)
-      let tenureMonths = parseFloat(data.requestedTenureMonths);
-      if (tenureMonths <= 30) {
-        tenureMonths = tenureMonths * 12; // Convert years to months
-      }
+      console.log('[NewApplication] Starting application creation...');
       
-      const response = await rmAPI.applications.create({
-        productCode: data.productCode,
-        requestedAmount: parseFloat(data.requestedAmount),
-        requestedTenureMonths: Math.round(tenureMonths),
-        channel: data.channel,
-        applicantId: applicantId, // Required by backend
-      });
-      console.log('[NewApplication] Application creation response:', { 
-        duration: Date.now() - applicationStartTime,
-        response: response.data,
-        hasApplicationId: !!response.data?.applicationId 
-      });
+      // Generate applicant ID (backend will create minimal record if needed)
+      const applicantId = crypto.randomUUID();
+      
+      // Convert years to months
+      const tenureMonths = Math.round(parseFloat(formData.requestedTenureYears) * 12);
 
-      if (response.data?.applicationId) {
-        const applicationId = response.data.applicationId;
+      const requestData = {
+        productCode: formData.productCode,
+        requestedAmount: parseFloat(formData.requestedAmount),
+        requestedTenureMonths: tenureMonths,
+        channel: formData.channel as 'Branch' | 'DSA' | 'Online' | 'Mobile',
+        applicantId,
+      };
 
-        // Assign to current RM user
-        try {
-          await rmAPI.applications.assign(applicationId, user.id);
-        } catch (assignErr) {
-          console.warn('Failed to assign application to RM:', assignErr);
-          // Continue anyway - assignment might be done automatically
-        }
+      console.log('[NewApplication] Calling API with:', requestData);
 
-        addToast({
-          type: 'success',
-          message: 'Application created successfully. Please fill in the details.',
-        });
+      // Create application - Backend saves to database
+      const response = await rmAPI.applications.create(requestData);
 
+      console.log('[NewApplication] API Response:', response);
+
+      const applicationId = response.data?.applicationId;
+
+      if (applicationId) {
+        console.log('[NewApplication] ✅ Application created, ID:', applicationId);
+        addToast({ type: 'success', message: 'Application created! Now add personal details.' });
         // Navigate to personal information step
         navigate(`/rm/applications/${applicationId}/personal`);
       } else {
-        throw new Error('Application ID not received from server');
+        console.error('[NewApplication] ❌ No application ID in response:', response.data);
+        throw new Error('Application ID not received');
       }
     } catch (err: any) {
-      console.error('Failed to create application:', err);
+      console.error('[NewApplication] ❌ Error creating application:', err);
+      console.error('[NewApplication] Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+      });
       addToast({
         type: 'error',
-        message: err.message || 'Failed to create application. Please try again.',
+        message: err.response?.data?.error || err.message || 'Failed to create application',
       });
     } finally {
       setLoading(false);
     }
   };
 
-  // Ensure we always render something
-  console.log('[NewApplication] About to render form JSX');
-  
+  if (authLoading) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="ml-3 text-gray-600">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user?.id) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <p className="text-red-600">Please log in to create an application.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in safe-area-inset p-6">
+    <div className="max-w-2xl mx-auto space-y-6 p-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
@@ -239,28 +150,22 @@ export default function NewApplication() {
         </p>
       </div>
 
-      {/* Error Display */}
-      {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
-        </div>
-      )}
-
       {/* Form */}
       <Card>
         <CardHeader>
           <CardTitle>Loan Details</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Loan Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Loan Type <span className="text-red-500">*</span>
               </label>
               <select
-                {...register('productCode')}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px] ${
+                value={formData.productCode}
+                onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white min-h-[44px] ${
                   errors.productCode ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
               >
@@ -271,7 +176,7 @@ export default function NewApplication() {
               </select>
               {errors.productCode && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {errors.productCode.message}
+                  {errors.productCode}
                 </p>
               )}
             </div>
@@ -284,9 +189,10 @@ export default function NewApplication() {
               <Input
                 type="number"
                 placeholder="Enter loan amount"
-                {...register('requestedAmount')}
-                error={errors.requestedAmount?.message}
-                className="touch-manipulation min-h-[44px]"
+                value={formData.requestedAmount}
+                onChange={(e) => setFormData({ ...formData, requestedAmount: e.target.value })}
+                error={errors.requestedAmount}
+                className="min-h-[44px]"
                 min="50000"
                 max="50000000"
                 step="10000"
@@ -303,30 +209,17 @@ export default function NewApplication() {
               </label>
               <Input
                 type="number"
-                placeholder="Enter tenure in years"
-                {...register('requestedTenureMonths')}
-                error={errors.requestedTenureMonths?.message}
-                className="touch-manipulation min-h-[44px]"
+                placeholder="Enter tenure in years (1-30)"
+                value={formData.requestedTenureYears}
+                onChange={(e) => setFormData({ ...formData, requestedTenureYears: e.target.value })}
+                error={errors.requestedTenureYears}
+                className="min-h-[44px]"
                 min="1"
                 max="30"
                 step="1"
-                onChange={(e) => {
-                  const years = parseFloat(e.target.value);
-                  if (!isNaN(years) && years >= 1 && years <= 30) {
-                    // Convert years to months for backend
-                    register('requestedTenureMonths').onChange({
-                      target: { value: (years * 12).toString() },
-                    });
-                  }
-                }}
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Range: 1-30 years
-                {watch('requestedTenureMonths') && (
-                  <span className="ml-2">
-                    ({Math.round(parseFloat(watch('requestedTenureMonths')) / 12)} years)
-                  </span>
-                )}
               </p>
             </div>
 
@@ -336,8 +229,9 @@ export default function NewApplication() {
                 Channel <span className="text-red-500">*</span>
               </label>
               <select
-                {...register('channel')}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white touch-manipulation min-h-[44px] ${
+                value={formData.channel}
+                onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white min-h-[44px] ${
                   errors.channel ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
               >
@@ -348,19 +242,10 @@ export default function NewApplication() {
               </select>
               {errors.channel && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {errors.channel.message}
+                  {errors.channel}
                 </p>
               )}
             </div>
-
-            {/* Product-specific information */}
-            {selectedProduct === 'HOME_LOAN_V1' && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  <strong>Home Loan:</strong> You will be asked to provide property details in the next steps.
-                </p>
-              </div>
-            )}
 
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
@@ -368,15 +253,15 @@ export default function NewApplication() {
                 type="button"
                 variant="outline"
                 onClick={() => navigate('/rm/applications')}
-                className="flex-1 touch-manipulation min-h-[44px]"
+                className="flex-1 min-h-[44px]"
                 disabled={loading}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                className="flex-1 touch-manipulation min-h-[44px]"
-                disabled={loading}
+                className="flex-1 min-h-[44px]"
+                disabled={loading || !formData.productCode}
               >
                 {loading ? (
                   <>
@@ -385,8 +270,8 @@ export default function NewApplication() {
                   </>
                 ) : (
                   <>
+                    <Plus className="h-4 w-4 mr-2" />
                     Create Application
-                    <ArrowRight className="h-4 w-4 ml-2" />
                   </>
                 )}
               </Button>
@@ -394,22 +279,6 @@ export default function NewApplication() {
           </form>
         </CardContent>
       </Card>
-
-      {/* Info Card */}
-      <Card className="bg-gray-50 dark:bg-gray-800">
-        <CardContent className="pt-6">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-            What happens next?
-          </h3>
-          <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-            <li>• You'll be guided through a step-by-step process</li>
-            <li>• Personal information, employment details, and documents will be captured</li>
-            <li>• You can save your progress at any time</li>
-            <li>• Submit when all mandatory information is complete</li>
-          </ul>
-        </CardContent>
-      </Card>
     </div>
   );
 }
-

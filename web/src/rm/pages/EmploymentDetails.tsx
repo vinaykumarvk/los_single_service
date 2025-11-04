@@ -15,6 +15,7 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
 import { ArrowLeft, ArrowRight, Save, Briefcase, DollarSign, FileText, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 const employmentSchema = z.object({
   employmentType: z.enum(['Salaried', 'Self-employed'], { 
@@ -168,15 +169,18 @@ export default function RMEmploymentDetails() {
 
   if (fetching) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
+    <ApplicationStepWrapper>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -418,6 +422,7 @@ export default function RMEmploymentDetails() {
           </div>
         </div>
       </form>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }

@@ -10,6 +10,7 @@ import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 interface CIBILReport {
   requestId: string;
@@ -213,14 +214,17 @@ export default function RMCIBILCheck() {
 
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="flex items-center justify-center min-h-64">
+          <Spinner />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <ApplicationStepWrapper>
+      <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">CIBIL Credit Check</h1>
@@ -462,7 +466,8 @@ export default function RMCIBILCheck() {
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }
 

@@ -148,7 +148,23 @@ export function setupAuthFeatures(app: any, pool: Pool) {
       const otpRecord = otpRows[0];
 
       // Verify OTP
-      const otpValid = await bcrypt.compare(parsed.data.otp, otpRecord.otp_hash);
+      // MOCK MODE: Accept any OTP if MOCK_OTP environment variable is set
+      const MOCK_OTP = process.env.MOCK_OTP === 'true' || process.env.NODE_ENV === 'development';
+      let otpValid = false;
+      
+      if (MOCK_OTP) {
+        // In mock mode, accept any 6-digit OTP
+        otpValid = /^\d{6}$/.test(parsed.data.otp);
+        logger.info('PasswordResetOTPVerified', { 
+          userId: user.user_id, 
+          mode: 'MOCK', 
+          otpLength: parsed.data.otp.length 
+        });
+      } else {
+        // Production mode: verify OTP hash
+        otpValid = await bcrypt.compare(parsed.data.otp, otpRecord.otp_hash);
+      }
+      
       if (!otpValid) {
         await client.query('ROLLBACK');
         return res.status(401).json({ error: 'Invalid OTP' });

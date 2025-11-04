@@ -10,8 +10,6 @@ import { RMayout } from './components/RMLayout';
 import RMDashboard from './pages/Dashboard';
 import RMApplicationsList from './pages/ApplicationsList';
 import NewApplication from './pages/NewApplication';
-import NewApplicationSimple from './pages/NewApplicationSimple';
-import NewApplicationFixed from './pages/NewApplicationFixed';
 import RMPersonalInformation from './pages/PersonalInformation';
 import RMEmploymentDetails from './pages/EmploymentDetails';
 import RMLoanPropertyDetails from './pages/LoanPropertyDetails';
@@ -19,14 +17,12 @@ import RMDocumentUpload from './pages/DocumentUpload';
 import RMBankVerification from './pages/BankVerification';
 import RMCIBILCheck from './pages/CIBILCheck';
 import RMApplicationReview from './pages/ApplicationReview';
-import ApplicationWizard from './pages/ApplicationWizard';
 
 // Placeholder pages (to be implemented)
 const RMApplicationStatus = () => <div>RM Application Status (Coming Soon)</div>;
 
 export function RMRoutes() {
   // Simplified routing - using relative paths (parent route is /rm/*)
-  // When path is /rm/applications/new, child route "applications/new" matches
   return (
     <RMayout>
       <Routes>
@@ -34,10 +30,7 @@ export function RMRoutes() {
         <Route path="" element={<RMDashboard />} />
         
         {/* New Application - must come before /applications/:id routes */}
-        <Route path="applications/new" element={<NewApplicationFixed />} />
-        
-        {/* Application Wizard - simplified multi-step flow */}
-        <Route path="applications/:id/wizard" element={<ApplicationWizard />} />
+        <Route path="applications/new" element={<NewApplication />} />
         
         {/* Legacy Application detail routes (for backward compatibility) */}
         <Route path="applications/:id/personal" element={<RMPersonalInformation />} />

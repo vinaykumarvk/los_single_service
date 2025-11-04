@@ -66,8 +66,17 @@ export const rmAPI = {
       firstName?: string;
       lastName?: string;
       dateOfBirth?: string;
+      gender?: string;
+      maritalStatus?: string;
       mobile?: string;
       email?: string;
+      pan?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      state?: string;
+      pincode?: string;
+      country?: string;
     }) =>
       apiClient.put(`/api/applicants/${applicantId}`, data),
     
@@ -149,6 +158,16 @@ export const rmAPI = {
 
     getChecklist: (applicationId: string) =>
       apiClient.get(`/api/applications/${applicationId}/documents/checklist`),
+
+    download: async (documentId: string) => {
+      const response = await apiClient.get(`/api/documents/${documentId}/download`);
+      if (response.data?.url) {
+        // Open download URL in new tab
+        window.open(response.data.url, '_blank');
+        return response.data;
+      }
+      throw new Error('Download URL not available');
+    },
   },
 
   // Integrations
@@ -216,24 +235,6 @@ export const rmAPI = {
       getReport: (requestId: string) =>
         apiClient.get(`/api/integrations/bureau/${requestId}/report`),
     },
-  },
-
-  // Property
-  property: {
-    get: (applicationId: string) =>
-      apiClient.get(`/api/applications/${applicationId}/property`),
-    
-    createOrUpdate: (applicationId: string, data: {
-      propertyType: string;
-      builderName?: string;
-      projectName?: string;
-      propertyValue?: number;
-      propertyAddress?: string;
-      propertyPincode?: string;
-      propertyCity?: string;
-      propertyState?: string;
-    }) =>
-      apiClient.post(`/api/applications/${applicationId}/property`, data),
   },
 
   // Masters

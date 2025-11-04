@@ -14,6 +14,7 @@ import Input from '../../components/ui/Input';
 import Spinner from '../../components/ui/Spinner';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 const bankVerificationSchema = z.object({
   accountNumber: z.string()
@@ -294,14 +295,17 @@ export default function RMBankVerification() {
 
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="flex items-center justify-center min-h-64">
+          <Spinner />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <ApplicationStepWrapper>
+      <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bank Account Verification</h1>
@@ -520,7 +524,8 @@ export default function RMBankVerification() {
           </div>
         </div>
       </form>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }
 

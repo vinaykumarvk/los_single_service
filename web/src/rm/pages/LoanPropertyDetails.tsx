@@ -15,6 +15,7 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
 import { ArrowLeft, Save, Home, DollarSign, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 const loanPropertySchema = z.object({
   loanType: z.enum(['Home Loan', 'Balance Transfer', 'Top-up'], { 
@@ -237,15 +238,18 @@ export default function RMLoanPropertyDetails() {
 
   if (fetching) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
+    <ApplicationStepWrapper>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -491,7 +495,8 @@ export default function RMLoanPropertyDetails() {
           </div>
         </div>
       </form>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }
 

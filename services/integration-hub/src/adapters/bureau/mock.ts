@@ -56,9 +56,14 @@ function generateMockAccounts(score: number): Array<{
   return accounts;
 }
 
+// Shared storage for all MockBureauAdapter instances (in production, this would be in database)
+const sharedMockReports: Map<string, BureauReport> = new Map();
+
 export class MockBureauAdapter implements BureauAdapter {
-  // Store simulated reports (in production, this would be in database)
-  private mockReports: Map<string, BureauReport> = new Map();
+  // Use shared storage so reports persist across adapter instances
+  private get mockReports(): Map<string, BureauReport> {
+    return sharedMockReports;
+  }
   
   async pullCreditReport(request: BureauPullRequest): Promise<BureauPullResponse> {
     logger.info('MockBureauPullRequest', { applicationId: request.applicationId, provider: request.provider });
@@ -67,17 +72,16 @@ export class MockBureauAdapter implements BureauAdapter {
     const externalRef = uuidv4();
     const provider = request.provider || 'CIBIL';
     
-    // Simulate async processing (in real scenario, bureau processes and calls webhook)
-    setTimeout(() => {
-      this.generateMockReport(requestId, request.applicationId, provider);
-    }, 2000 + Math.random() * 3000); // 2-5 second delay
+    // Generate report immediately for stub (synchronous for testing)
+    // In real implementation, this would be async via webhook
+    this.generateMockReport(requestId, request.applicationId, provider);
     
     return {
       requestId,
       externalRef,
       status: 'REQUESTED',
       provider,
-      estimatedCompletionTime: 5
+      estimatedCompletionTime: 0 // Immediate for stub
     };
   }
   

@@ -478,7 +478,7 @@ export default function RMApplicationsList() {
                             </button>
                             {app.status === 'Draft' && (
                               <button
-                                onClick={() => app.application_id && navigate(`/rm/applications/${app.application_id}/wizard`)}
+                                onClick={() => app.application_id && navigate(`/rm/applications/${app.application_id}/personal`)}
                                 className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 font-medium transition-colors touch-manipulation min-h-[44px] min-w-[44px] flex items-center gap-2"
                               >
                                 <FileEdit className="h-4 w-4" />
@@ -560,7 +560,7 @@ export default function RMApplicationsList() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => navigate(`/rm/applications/${app.application_id}/wizard`)}
+                            onClick={() => navigate(`/rm/applications/${app.application_id}/personal`)}
                             className="flex-1 touch-manipulation min-h-[44px]"
                           >
                             <FileEdit className="h-4 w-4 mr-2" />

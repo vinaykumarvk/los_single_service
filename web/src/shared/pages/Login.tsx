@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { config } from '../lib/config';
 // Use shared components path - will create if needed
@@ -103,9 +103,9 @@ export default function Login() {
                 {loading ? 'Logging in...' : 'Login'}
               </Button>
               <p className="text-xs text-gray-500 text-center mt-4">
-                <a href="/forgot-password" className="text-blue-600 hover:text-blue-800">
+                <Link to="/rm/forgot-password" className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
                   Forgot password?
-                </a>
+                </Link>
               </p>
             </form>
           )}

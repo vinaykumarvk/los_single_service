@@ -9,13 +9,19 @@ import { createPaymentAdapter } from './adapters/payment';
 const app = express();
 const logger = createLogger('integration-hub');
 
-app.use(express.text({ type: ['application/json', 'text/plain'], limit: '1mb' }));
+// Parse JSON first, then preserve raw body for signature verification
+app.use(json());
 app.use((req, _res, next) => {
-  // Preserve raw body for signature verification; parse JSON later on-demand
-  (req as any).rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+  // Preserve raw body for signature verification (if not already a string)
+  if (typeof req.body === 'object' && req.body !== null) {
+    (req as any).rawBody = JSON.stringify(req.body);
+  } else if (typeof req.body === 'string') {
+    (req as any).rawBody = req.body;
+  } else {
+    (req as any).rawBody = '';
+  }
   next();
 });
-app.use(json());
 app.use(correlationIdMiddleware);
 
 app.get('/health', (_req, res) => res.status(200).send('OK'));
@@ -181,6 +187,107 @@ app.post('/api/integrations/bureau/pull', async (req, res) => {
   } catch (err) {
     logger.error('BureauPullError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to pull bureau report' });
+  }
+});
+
+// Bureau report endpoint (get report by requestId)
+app.get('/api/integrations/bureau/:requestId/report', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { provider } = req.query;
+    
+    if (!requestId) {
+      return res.status(400).json({ error: 'requestId is required' });
+    }
+    
+    const adapter = createBureauAdapter((provider as any) || 'CIBIL');
+    const report = await adapter.getCreditReport(requestId);
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found or not ready yet' });
+    }
+    
+    logger.info('BureauReportRetrieved', { 
+      correlationId: (req as any).correlationId, 
+      requestId,
+      score: report.score,
+      provider: report.provider 
+    });
+    
+    return res.status(200).json(report);
+  } catch (err) {
+    logger.error('BureauReportError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to get bureau report' });
+  }
+});
+
+// Penny drop endpoint (stub - returns success)
+app.post('/api/integrations/bank/penny-drop', async (req, res) => {
+  try {
+    const { accountNumber, ifsc, amount } = req.body || {};
+    
+    if (!accountNumber || !ifsc) {
+      return res.status(400).json({ error: 'accountNumber and ifsc are required' });
+    }
+    
+    // Validate IFSC format (4 letters + 0 + 6 alphanumeric)
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+      return res.status(400).json({ error: 'Invalid IFSC format' });
+    }
+    
+    // Generate request ID
+    const requestId = `PENNY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    logger.info('PennyDropInitiated', { 
+      correlationId: (req as any).correlationId, 
+      requestId,
+      accountNumber: accountNumber?.substring(0, 4) + '****' + accountNumber?.substring(accountNumber.length - 4),
+      ifsc: ifsc?.substring(0, 4) + '****' + ifsc?.substring(ifsc.length - 2),
+      amount: amount || 1
+    });
+    
+    // Stub: Return success immediately
+    // In real implementation, this would initiate a penny drop transaction and return status via webhook
+    return res.status(200).json({
+      requestId,
+      status: 'SUCCESS',
+      verified: true,
+      message: 'Penny drop verification successful',
+      transactionId: `TXN_${Date.now()}`,
+      amount: amount || 1,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('PennyDropError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to initiate penny drop' });
+  }
+});
+
+// Penny drop status endpoint (stub)
+app.get('/api/integrations/bank/penny-drop/:requestId/status', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    
+    if (!requestId) {
+      return res.status(400).json({ error: 'requestId is required' });
+    }
+    
+    logger.info('PennyDropStatusChecked', { 
+      correlationId: (req as any).correlationId, 
+      requestId
+    });
+    
+    // Stub: Return success status
+    return res.status(200).json({
+      requestId,
+      status: 'SUCCESS',
+      verified: true,
+      message: 'Penny drop verification successful',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('PennyDropStatusError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to get penny drop status' });
   }
 });
 

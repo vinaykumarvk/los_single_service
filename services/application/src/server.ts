@@ -139,6 +139,7 @@ async function validateProductLimits(productCode: string, requestedAmount: numbe
 }
 
 // POST /api/applications - create
+// POST /api/applications - create
 app.post('/api/applications', async (req, res) => {
   const parsed = CreateApplicationSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -156,12 +157,19 @@ app.post('/api/applications', async (req, res) => {
   try {
     await client.query('BEGIN');
     
+    // Check if applicant exists, create minimal one if not (to avoid KYC service timeout)
+    const { rows: applicantRows } = await client.query(
+      'SELECT applicant_id FROM applicants WHERE applicant_id = $1',
+      [parsed.data.applicantId]
+    );
+    
     // Generate application ID in format: ProductCode + SerialNumber (e.g., HL00001, PL00042)
     const idResult = await client.query(
       'SELECT generate_application_id($1) as application_id',
       [parsed.data.productCode]
     );
-    const id = idResult.rows[0].application_id;    
+    const id = idResult.rows[0].application_id;
+    
     if (applicantRows.length === 0) {
       // Create minimal applicant record in same transaction
       await client.query(
@@ -174,6 +182,11 @@ app.post('/api/applications', async (req, res) => {
     }
     
     // Persist application
+    await client.query(
+      'INSERT INTO applications (application_id, applicant_id, channel, product_code, requested_amount, requested_tenure_months, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, parsed.data.applicantId, parsed.data.channel, parsed.data.productCode, parsed.data.requestedAmount, parsed.data.requestedTenureMonths, 'Draft']
+    );
+    
     // Write outbox event in same transaction
     const eventId = uuidv4();
     await client.query(

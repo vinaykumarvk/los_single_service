@@ -10,6 +10,7 @@ import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 interface ApplicationSummary {
   applicationId: string;
@@ -30,6 +31,7 @@ interface ChecklistItem {
   label: string;
   completed: boolean;
   section: string;
+  showWarning?: boolean; // Only show warning if this section should be completed based on workflow
 }
 
 export default function RMApplicationReview() {
@@ -89,7 +91,9 @@ export default function RMApplicationReview() {
 
       setSummary(appSummary);
 
-      // Build checklist
+      // Build checklist - only show warnings for sections that should be completed
+      // Personal info should be completed before employment, so only check employment if personal is done
+      // Employment should be completed before documents, so only check documents if employment is done
       const items: ChecklistItem[] = [
         {
           label: 'Personal Information',
@@ -100,6 +104,8 @@ export default function RMApplicationReview() {
           label: 'Employment & Income Details',
           completed: appSummary.employmentInfoComplete,
           section: 'employment',
+          // Only show as incomplete if personal info is complete (workflow progression)
+          showWarning: appSummary.personalInfoComplete && !appSummary.employmentInfoComplete,
         },
         {
           label: 'Loan & Property Details',
@@ -110,6 +116,8 @@ export default function RMApplicationReview() {
           label: 'KYC Documents Uploaded',
           completed: appSummary.documentsComplete,
           section: 'documents',
+          // Only show as incomplete if employment is complete (workflow progression)
+          showWarning: appSummary.employmentInfoComplete && !appSummary.documentsComplete,
         },
         {
           label: 'Bank Account Verified',
@@ -201,15 +209,18 @@ export default function RMApplicationReview() {
 
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="flex items-center justify-center min-h-64">
+          <Spinner />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   if (!summary) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6">
+      <ApplicationStepWrapper>
+        <div className="max-w-4xl mx-auto space-y-6">
         <Card>
           <CardContent className="py-8">
             <div className="text-center">
@@ -220,7 +231,8 @@ export default function RMApplicationReview() {
             </div>
           </CardContent>
         </Card>
-      </div>
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
@@ -231,7 +243,8 @@ export default function RMApplicationReview() {
     summary.documentsComplete;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <ApplicationStepWrapper>
+      <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Application Review</h1>
@@ -319,11 +332,19 @@ export default function RMApplicationReview() {
                 <div className="flex items-center space-x-3">
                   {item.completed ? (
                     <span className="text-green-600 text-xl">✓</span>
-                  ) : (
+                  ) : item.showWarning ? (
                     <span className="text-red-600 text-xl">✗</span>
+                  ) : (
+                    <span className="text-gray-400 text-xl">○</span>
                   )}
                   <span
-                    className={`font-medium ${item.completed ? 'text-gray-900' : 'text-red-600'}`}
+                    className={`font-medium ${
+                      item.completed 
+                        ? 'text-gray-900' 
+                        : item.showWarning 
+                        ? 'text-red-600' 
+                        : 'text-gray-500'
+                    }`}
                   >
                     {item.label}
                   </span>
@@ -397,7 +418,8 @@ export default function RMApplicationReview() {
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }
 

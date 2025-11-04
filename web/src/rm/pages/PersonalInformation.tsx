@@ -15,6 +15,7 @@ import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
 import { ArrowLeft, Save, FileText, User, MapPin, CreditCard, CheckCircle2, AlertCircle } from 'lucide-react';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 const personalInfoSchema = z.object({
   firstName: z.string()
@@ -138,18 +139,120 @@ export default function RMPersonalInformation() {
     }
   };
 
+  // All Indian States and Union Territories
+  const allIndianStates = [
+    'Andhra Pradesh',
+    'Arunachal Pradesh',
+    'Assam',
+    'Bihar',
+    'Chhattisgarh',
+    'Goa',
+    'Gujarat',
+    'Haryana',
+    'Himachal Pradesh',
+    'Jharkhand',
+    'Karnataka',
+    'Kerala',
+    'Madhya Pradesh',
+    'Maharashtra',
+    'Manipur',
+    'Meghalaya',
+    'Mizoram',
+    'Nagaland',
+    'Odisha',
+    'Punjab',
+    'Rajasthan',
+    'Sikkim',
+    'Tamil Nadu',
+    'Telangana',
+    'Tripura',
+    'Uttar Pradesh',
+    'Uttarakhand',
+    'West Bengal',
+    // Union Territories
+    'Andaman and Nicobar Islands',
+    'Chandigarh',
+    'Dadra and Nagar Haveli and Daman and Diu',
+    'Delhi',
+    'Jammu and Kashmir',
+    'Ladakh',
+    'Lakshadweep',
+    'Puducherry',
+  ];
+
+  // Top 50 Indian Cities
+  const topIndianCities = [
+    'Mumbai',
+    'Delhi',
+    'Bangalore',
+    'Hyderabad',
+    'Ahmedabad',
+    'Chennai',
+    'Kolkata',
+    'Surat',
+    'Pune',
+    'Jaipur',
+    'Lucknow',
+    'Kanpur',
+    'Nagpur',
+    'Indore',
+    'Thane',
+    'Bhopal',
+    'Visakhapatnam',
+    'Patna',
+    'Vadodara',
+    'Ghaziabad',
+    'Ludhiana',
+    'Agra',
+    'Nashik',
+    'Faridabad',
+    'Meerut',
+    'Rajkot',
+    'Varanasi',
+    'Srinagar',
+    'Amritsar',
+    'Noida',
+    'Ranchi',
+    'Chandigarh',
+    'Jabalpur',
+    'Gwalior',
+    'Coimbatore',
+    'Vijayawada',
+    'Jodhpur',
+    'Madurai',
+    'Raipur',
+    'Kota',
+    'Guwahati',
+    'Thiruvananthapuram',
+    'Solapur',
+    'Tiruchirappalli',
+    'Bareilly',
+    'Moradabad',
+    'Mysore',
+    'Tiruppur',
+    'Warangal',
+  ];
+
   const loadMasters = async () => {
     try {
       const response = await rmAPI.masters.branches();
       if (response.data?.branches) {
         const uniqueStates = [...new Set(response.data.branches.map((b: any) => b.state).filter(Boolean))] as string[];
         const uniqueCities = [...new Set(response.data.branches.map((b: any) => b.city).filter(Boolean))] as string[];
-        setStates(uniqueStates.sort());
-        setCities(uniqueCities.sort());
+        // Merge with comprehensive lists, removing duplicates
+        const allStates = [...new Set([...allIndianStates, ...uniqueStates])].sort();
+        const allCities = [...new Set([...topIndianCities, ...uniqueCities])].sort();
+        setStates(allStates);
+        setCities(allCities);
+      } else {
+        // Fallback to comprehensive lists
+        setStates(allIndianStates);
+        setCities(topIndianCities);
       }
     } catch (err) {
-      setStates(['Maharashtra', 'Karnataka', 'Tamil Nadu', 'Delhi', 'Gujarat']);
-      setCities(['Mumbai', 'Bangalore', 'Chennai', 'Delhi', 'Ahmedabad']);
+      // Fallback to comprehensive lists
+      setStates(allIndianStates);
+      setCities(topIndianCities);
     }
   };
 
@@ -164,7 +267,22 @@ export default function RMPersonalInformation() {
 
     try {
       setLoading(true);
-      await rmAPI.applicants.update(id, {
+      
+      // Get application to find applicantId
+      const application = await rmAPI.applications.get(id);
+      const applicantId = application.data?.applicant_id;
+      
+      if (!applicantId) {
+        addToast({
+          type: 'error',
+          message: 'Applicant ID not found. Please create the application first.',
+        });
+        setLoading(false);
+        return;
+      }
+      
+      // Use the applicantId to update applicant record directly
+      await rmAPI.applicants.create(applicantId, {
         firstName: data.firstName,
         lastName: data.lastName,
         dateOfBirth: data.dateOfBirth,
@@ -173,7 +291,6 @@ export default function RMPersonalInformation() {
         mobile: data.mobile,
         email: data.email,
         addressLine1: data.addressLine1,
-        addressLine2: data.addressLine2,
         pincode: data.pincode,
         city: data.city,
         state: data.state,
@@ -221,16 +338,19 @@ export default function RMPersonalInformation() {
 
   if (fetching) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-        <SkeletonCard />
-        <SkeletonCard />
-        <SkeletonCard />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
+    <ApplicationStepWrapper>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-4 sm:space-y-6 animate-fade-in safe-area-inset">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -545,6 +665,7 @@ export default function RMPersonalInformation() {
           </div>
         </div>
       </form>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }

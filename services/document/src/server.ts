@@ -36,6 +36,12 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
     return res.status(400).json({ error: 'Invalid file type. Allowed: PDF, JPG, PNG' });
   }
 
+  // Support both 'documentCode' (from frontend) and 'docType' (legacy)
+  const docType = req.body.documentCode || req.body.docType;
+  if (!docType) {
+    return res.status(400).json({ error: 'documentCode or docType is required' });
+  }
+
   const docId = uuidv4();
   const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
   const client = await pool.connect();
@@ -48,19 +54,19 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
     let ocrProvider = null;
     let ocrConfidence = null;
     try {
-      const metadata = await extractDocumentMetadata(req.file.buffer, req.file.mimetype, req.body.docType);
+      const metadata = await extractDocumentMetadata(req.file.buffer, req.file.mimetype, docType);
       extractedData = metadata;
       ocrProvider = process.env.OCR_PROVIDER || 'mock';
       ocrConfidence = metadata.confidence || null;
     } catch (ocrErr) {
-      logger.warn('OCRFailed', { error: (ocrErr as Error).message, docId, docType: req.body.docType });
+      logger.warn('OCRFailed', { error: (ocrErr as Error).message, docId, docType });
       // Continue without OCR data
     }
     
     // Check if this is a re-upload (document versioning)
     const existingDoc = await client.query(
       'SELECT doc_id, version FROM documents WHERE application_id = $1 AND doc_type = $2 ORDER BY version DESC LIMIT 1',
-      [req.params.id, req.body.docType]
+      [req.params.id, docType]
     );
     
     const version = existingDoc.rows.length > 0 ? existingDoc.rows[0].version + 1 : 1;
@@ -69,7 +75,7 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
     // Persist document metadata with OCR data and versioning
     await client.query(
       'INSERT INTO documents (doc_id, application_id, doc_type, file_name, file_type, size_bytes, hash, status, extracted_data, ocr_provider, ocr_confidence, version, previous_version_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
-      [docId, req.params.id, req.body.docType, req.file.originalname, req.file.mimetype, req.file.size, fileHash, 'Uploaded', extractedData ? JSON.stringify(extractedData) : null, ocrProvider, ocrConfidence, version, previousVersionId]
+      [docId, req.params.id, docType, req.file.originalname, req.file.mimetype, req.file.size, fileHash, 'Uploaded', extractedData ? JSON.stringify(extractedData) : null, ocrProvider, ocrConfidence, version, previousVersionId]
     );
 
     // Upload to MinIO (outside transaction but awaited before event)
@@ -83,12 +89,12 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
     const eventId = uuidv4();
     await client.query(
       'INSERT INTO outbox (id, aggregate_id, topic, event_type, payload, headers) VALUES ($1, $2, $3, $4, $5, $6)',
-      [eventId, req.params.id, 'los.document.DocumentUploaded.v1', 'los.document.DocumentUploaded.v1', JSON.stringify({ applicationId: req.params.id, docId, docType: req.body.docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey }), JSON.stringify({ correlationId: (req as any).correlationId })]
+      [eventId, req.params.id, 'los.document.DocumentUploaded.v1', 'los.document.DocumentUploaded.v1', JSON.stringify({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey }), JSON.stringify({ correlationId: (req as any).correlationId })]
     );
 
     await client.query('COMMIT');
-    logger.info('DocumentUploaded', { correlationId: (req as any).correlationId, applicationId: req.params.id, docId, docType: req.body.docType });
-    return res.status(201).json({ applicationId: req.params.id, docId, docType: req.body.docType, fileName: req.file.originalname });
+    logger.info('DocumentUploaded', { correlationId: (req as any).correlationId, applicationId: req.params.id, docId, docType });
+    return res.status(201).json({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname });
   } catch (err) {
     await client.query('ROLLBACK');
     logger.error('DocumentUploadError', { error: (err as Error).message, correlationId: (req as any).correlationId });
@@ -171,10 +177,21 @@ app.get('/api/applications/:id/checklist', async (req, res) => {
 app.get('/api/applications/:id/documents', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT doc_id, doc_type, file_name, file_type, size_bytes, status, created_at FROM documents WHERE application_id = $1 ORDER BY created_at DESC',
+      'SELECT doc_id, doc_type, file_name, file_type, size_bytes, status, created_at, object_key FROM documents WHERE application_id = $1 ORDER BY created_at DESC',
       [req.params.id]
     );
-    return res.status(200).json({ documents: rows });
+    // Map to match frontend interface
+    const documents = rows.map((row: any) => ({
+      document_id: row.doc_id,
+      document_code: row.doc_type,
+      document_name: row.file_name || row.doc_type,
+      file_url: row.object_key ? `/api/documents/${row.doc_id}/download` : undefined,
+      verification_status: row.status,
+      uploaded_at: row.created_at,
+      file_type: row.file_type,
+      size_bytes: row.size_bytes,
+    }));
+    return res.status(200).json({ documents });
   } catch (err) {
     logger.error('ListDocumentsError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to list documents' });
@@ -247,12 +264,44 @@ app.get('/api/applications/:id/documents/compliance', async (req, res) => {
 app.get('/api/documents/:docId/download', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT object_key, file_name, file_type FROM documents WHERE doc_id = $1', [req.params.docId]);
-    if (rows.length === 0 || !rows[0].object_key) return res.status(404).json({ error: 'Not found' });
-    const url = await getPresignedUrl(s3, { bucket, key: rows[0].object_key, expiresInSec: 300 });
-    return res.status(200).json({ url, fileName: rows[0].file_name, fileType: rows[0].file_type, expiresInSec: 300 });
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    if (!rows[0].object_key) {
+      return res.status(404).json({ error: 'Document file not found (object_key missing)' });
+    }
+    
+    // Try to generate presigned URL
+    try {
+      const url = await getPresignedUrl(s3, { bucket, key: rows[0].object_key, expiresInSec: 300 });
+      return res.status(200).json({ 
+        url, 
+        fileName: rows[0].file_name, 
+        fileType: rows[0].file_type, 
+        expiresInSec: 300 
+      });
+    } catch (s3Err: any) {
+      // If S3/MinIO is not available, return a direct download URL (for development)
+      logger.warn('S3PresignedUrlError', { 
+        error: (s3Err as Error).message, 
+        objectKey: rows[0].object_key,
+        correlationId: (req as any).correlationId 
+      });
+      
+      // Fallback: Return a direct URL pattern (for development/stub)
+      const directUrl = `/api/documents/${req.params.docId}/file`;
+      return res.status(200).json({ 
+        url: directUrl,
+        fileName: rows[0].file_name, 
+        fileType: rows[0].file_type, 
+        expiresInSec: 300,
+        note: 'Using direct download URL (S3/MinIO not available)'
+      });
+    }
   } catch (err) {
     logger.error('DownloadPresignError', { error: (err as Error).message, correlationId: (req as any).correlationId });
-    return res.status(500).json({ error: 'Failed to generate download link' });
+    return res.status(500).json({ error: 'Failed to generate download link', details: (err as Error).message });
   }
 });
 

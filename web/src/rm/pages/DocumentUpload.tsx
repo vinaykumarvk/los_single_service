@@ -11,6 +11,8 @@ import Input from '../../components/ui/Input';
 import Spinner from '../../components/ui/Spinner';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
+import { Download, Trash2 } from 'lucide-react';
+import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 interface DocumentChecklistItem {
   document_code: string;
@@ -27,6 +29,8 @@ interface Document {
   file_url?: string;
   verification_status?: string;
   uploaded_at?: string;
+  file_type?: string;
+  size_bytes?: number;
 }
 
 export default function RMDocumentUpload() {
@@ -267,14 +271,17 @@ export default function RMDocumentUpload() {
 
   if (fetching) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Spinner />
-      </div>
+      <ApplicationStepWrapper>
+        <div className="flex items-center justify-center min-h-64">
+          <Spinner />
+        </div>
+      </ApplicationStepWrapper>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <ApplicationStepWrapper>
+      <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Document Upload</h1>
@@ -383,7 +390,15 @@ export default function RMDocumentUpload() {
 
                 {status === 'uploaded' && !isUploading && (
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-600">File uploaded</p>
+                    <div className="text-sm text-gray-600">
+                      <p>File uploaded</p>
+                      {uploadedDoc && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {uploadedDoc.document_name}
+                          {uploadedDoc.size_bytes && ` (${(uploadedDoc.size_bytes / 1024).toFixed(1)} KB)`}
+                        </p>
+                      )}
+                    </div>
                     {item.document_code === 'PAN_CARD' && (
                       <Button
                         size="sm"
@@ -405,21 +420,54 @@ export default function RMDocumentUpload() {
                       </Button>
                     )}
                     {uploadedDoc && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          // Delete document
-                          if (confirm('Delete this document?')) {
-                            rmAPI.documents.delete(uploadedDoc.document_id).then(() => {
-                              loadDocuments();
-                              loadChecklist();
-                            });
-                          }
-                        }}
-                      >
-                        Remove
-                      </Button>
+                      <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              try {
+                                await rmAPI.documents.download(uploadedDoc.document_id);
+                                addToast({
+                                  type: 'success',
+                                  message: 'Download started',
+                                });
+                              } catch (err: any) {
+                                addToast({
+                                  type: 'error',
+                                  message: err.message || 'Failed to download document',
+                                });
+                              }
+                            }}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Delete document
+                              if (confirm('Delete this document?')) {
+                                rmAPI.documents.delete(uploadedDoc.document_id).then(() => {
+                                  loadDocuments();
+                                  loadChecklist();
+                                  addToast({
+                                    type: 'success',
+                                    message: 'Document deleted',
+                                  });
+                                }).catch((err: any) => {
+                                  addToast({
+                                    type: 'error',
+                                    message: err.message || 'Failed to delete document',
+                                  });
+                                });
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remove
+                          </Button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -499,7 +547,8 @@ export default function RMDocumentUpload() {
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </ApplicationStepWrapper>
   );
 }
 

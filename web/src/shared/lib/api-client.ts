@@ -20,7 +20,8 @@ export class APIClient {
   private baseURL: string;
 
   constructor(baseURL?: string) {
-    this.baseURL = baseURL || config.api.baseURL;
+    // Use relative URLs (empty string) to go through Vite proxy for direct service connections
+    this.baseURL = baseURL !== undefined ? baseURL : '';
     
     this.axiosInstance = axios.create({
       baseURL: this.baseURL,
