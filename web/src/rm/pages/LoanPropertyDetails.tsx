@@ -147,20 +147,48 @@ export default function RMLoanPropertyDetails() {
 
       // Load property data
       try {
+        console.log('LoanPropertyDetails: Loading property data for application:', id);
         const propResponse = await rmAPI.property.get(id);
-        if (propResponse.data) {
-          const prop = propResponse.data;
-          setValue('propertyType', prop.property_type as any);
-          setValue('builderName', prop.builder_name || '');
-          setValue('projectName', prop.project_name || '');
-          setValue('propertyValue', prop.property_value?.toString() || '');
-          setValue('propertyAddress', prop.property_address || '');
-          setValue('propertyPincode', prop.property_pincode || '');
-          setValue('propertyCity', prop.property_city || '');
-          setValue('propertyState', prop.property_state || '');
+        console.log('LoanPropertyDetails: Property API response:', propResponse);
+        
+        // Handle axios response structure
+        let prop = null;
+        if (propResponse?.data && typeof propResponse.data === 'object') {
+          // Check if nested (response.data.data) or direct (response.data)
+          if (propResponse.data.property_id || propResponse.data.property_type) {
+            prop = propResponse.data;
+            console.log('LoanPropertyDetails: ✅ Found property data in response.data');
+          } else if (propResponse.data.data && typeof propResponse.data.data === 'object') {
+            prop = propResponse.data.data;
+            console.log('LoanPropertyDetails: ✅ Found property data in response.data.data');
+          }
         }
-      } catch {
-        // Property data may not exist yet
+        
+        if (prop) {
+          console.log('LoanPropertyDetails: Setting form values for property:', prop);
+          const fields = {
+            propertyType: prop.property_type as any,
+            builderName: prop.builder_name || '',
+            projectName: prop.project_name || '',
+            propertyValue: prop.property_value?.toString() || '',
+            propertyAddress: prop.property_address || '',
+            propertyPincode: prop.property_pincode || '',
+            propertyCity: prop.property_city || '',
+            propertyState: prop.property_state || '',
+          };
+          
+          console.log('LoanPropertyDetails: Form fields to set:', fields);
+          Object.entries(fields).forEach(([key, value]) => {
+            setValue(key as any, value);
+            console.log(`LoanPropertyDetails: Set ${key} = ${value}`);
+          });
+          console.log('LoanPropertyDetails: ✅ All property form values set successfully');
+        } else {
+          console.warn('LoanPropertyDetails: No property data found (may not exist yet)');
+        }
+      } catch (err: any) {
+        console.warn('LoanPropertyDetails: Property data may not exist yet:', err.message);
+        // Property data may not exist yet - this is OK
       }
     } catch (err: any) {
       console.error('Failed to load loan/property data:', err);

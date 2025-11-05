@@ -17,6 +17,7 @@ import RMDocumentUpload from './pages/DocumentUpload';
 import RMBankVerification from './pages/BankVerification';
 import RMCIBILCheck from './pages/CIBILCheck';
 import RMApplicationReview from './pages/ApplicationReview';
+import ApplicationDetail from './pages/ApplicationDetail';
 
 // Placeholder pages (to be implemented)
 const RMApplicationStatus = () => <div>RM Application Status (Coming Soon)</div>;
@@ -31,6 +32,9 @@ export function RMRoutes() {
         
         {/* New Application - must come before /applications/:id routes */}
         <Route path="applications/new" element={<NewApplication />} />
+        
+        {/* Application detail/view page - must come before other /applications/:id routes */}
+        <Route path="applications/:id" element={<ApplicationDetail />} />
         
         {/* Legacy Application detail routes (for backward compatibility) */}
         <Route path="applications/:id/personal" element={<RMPersonalInformation />} />

@@ -77,15 +77,41 @@ export default function RMDocumentUpload() {
   };
 
   const loadDocuments = async () => {
-    if (!id) return;
+    if (!id) {
+      console.warn('DocumentUpload: Cannot load documents - no application ID');
+      return;
+    }
 
     try {
+      console.log('DocumentUpload: Loading documents for application:', id);
       const response = await rmAPI.documents.list(id);
-      if (response.data?.documents) {
-        setDocuments(response.data.documents);
+      console.log('DocumentUpload: Documents API response:', response);
+      
+      // Handle axios response structure
+      let documents = null;
+      if (response?.data?.documents) {
+        documents = response.data.documents;
+        console.log('DocumentUpload: ✅ Found documents in response.data.documents');
+      } else if (response?.data && Array.isArray(response.data)) {
+        documents = response.data;
+        console.log('DocumentUpload: ✅ Found documents as array in response.data');
       }
-    } catch (err) {
-      console.error('Failed to load documents:', err);
+      
+      if (documents) {
+        console.log(`DocumentUpload: ✅ Loading ${documents.length} documents`);
+        setDocuments(documents);
+        console.log('DocumentUpload: Documents set successfully');
+      } else {
+        console.warn('DocumentUpload: No documents found in response');
+        setDocuments([]);
+      }
+    } catch (err: any) {
+      console.error('DocumentUpload: ❌ Failed to load documents:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+      });
+      setDocuments([]);
     }
   };
 

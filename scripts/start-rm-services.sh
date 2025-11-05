@@ -35,15 +35,15 @@ if ! docker ps | grep -q postgres; then
     exit 1
 fi
 
-# RM-REQUIRED SERVICES ONLY (6 essential services, in startup order)
+# RM-REQUIRED SERVICES ONLY (5 essential services, in startup order)
+# Document service has been consolidated into Application service
 # Integration Hub (3020) is optional and excluded by default
 declare -a RM_SERVICES=(
     "gateway:3000:API Gateway"
     "services/auth:3016:Auth Service"
     "services/masters:3005:Masters Service"
     "services/customer-kyc:3003:Customer KYC Service"
-    "services/application:3001:Application Service"
-    "services/document:3004:Document Service"
+    "services/application:3001:Application Service (includes Document Management)"
 )
 
 STARTED=0

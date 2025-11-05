@@ -107,35 +107,107 @@ export default function RMPersonalInformation() {
   }, [id]);
 
   const loadExistingData = async () => {
-    if (!id) return;
+    if (!id) {
+      console.warn('PersonalInformation: Cannot load data - no application ID');
+      return;
+    }
 
     try {
       setFetching(true);
+      console.log('PersonalInformation: Loading applicant data for application:', id);
+      
       const response = await rmAPI.applicants.get(id);
-      if (response.data) {
-        const applicant = response.data;
-        setValue('firstName', applicant.first_name || '');
-        setValue('lastName', applicant.last_name || '');
-        setValue('dateOfBirth', applicant.date_of_birth || '');
-        setValue('gender', applicant.gender as any);
-        setValue('maritalStatus', applicant.marital_status as any);
-        setValue('mobile', applicant.mobile || '');
-        setValue('email', applicant.email || '');
-        setValue('addressLine1', applicant.address_line1 || '');
-        setValue('addressLine2', applicant.address_line2 || '');
-        setValue('pincode', applicant.pincode || '');
-        setValue('city', applicant.city || '');
-        setValue('state', applicant.state || '');
-        setValue('pan', applicant.pan || '');
+      console.log('PersonalInformation: Full API response:', response);
+      console.log('PersonalInformation: Response type:', typeof response);
+      console.log('PersonalInformation: Response.data:', response?.data);
+      console.log('PersonalInformation: Response.data?.data:', response?.data?.data);
+      
+      // Axios returns { data: {...}, status, headers, ... }
+      // API returns { data: {...} }
+      // So final structure is: response.data.data
+      let applicant = null;
+      
+      // Check for axios response structure: response.data.data (API's data wrapped in axios data)
+      if (response?.data?.data && typeof response.data.data === 'object') {
+        applicant = response.data.data;
+        console.log('PersonalInformation: ✅ Found data in axios response structure (response.data.data)');
+      } 
+      // Check for direct data structure: response.data (if API returns data directly)
+      else if (response?.data && typeof response.data === 'object' && 'first_name' in response.data) {
+        applicant = response.data;
+        console.log('PersonalInformation: ✅ Found data in direct structure (response.data)');
+      }
+      // Check for direct response (shouldn't happen with axios but just in case)
+      else if (response && typeof response === 'object' && 'first_name' in response) {
+        applicant = response;
+        console.log('PersonalInformation: ✅ Found data as direct object');
+      }
+      else {
+        console.error('PersonalInformation: ❌ Could not find applicant data in response');
+        console.error('Response keys:', Object.keys(response || {}));
+        console.error('Response.data keys:', Object.keys(response?.data || {}));
+      }
+      
+      if (applicant) {
+        console.log('PersonalInformation: Setting form values for applicant:', applicant);
+        
+        // Set form values with detailed logging
+        const fields = {
+          firstName: applicant.first_name || '',
+          lastName: applicant.last_name || '',
+          dateOfBirth: applicant.date_of_birth ? (() => {
+            const date = new Date(applicant.date_of_birth);
+            if (!isNaN(date.getTime())) {
+              const day = String(date.getDate()).padStart(2, '0');
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const year = date.getFullYear();
+              return `${day}/${month}/${year}`;
+            }
+            return '';
+          })() : '',
+          gender: applicant.gender as any,
+          maritalStatus: applicant.marital_status as any,
+          mobile: applicant.mobile || '',
+          email: applicant.email || '',
+          addressLine1: applicant.address_line1 || '',
+          addressLine2: applicant.address_line2 || '',
+          pincode: applicant.pincode || '',
+          city: applicant.city || '',
+          state: applicant.state || '',
+          pan: applicant.pan || '',
+        };
+        
+        console.log('PersonalInformation: Form fields to set:', fields);
+        
+        // Set all values
+        Object.entries(fields).forEach(([key, value]) => {
+          setValue(key as any, value);
+          console.log(`PersonalInformation: Set ${key} = ${value}`);
+        });
+        
+        console.log('PersonalInformation: ✅ All form values set successfully');
+      } else {
+        console.error('PersonalInformation: ❌ No applicant data found in response');
+        console.error('Response structure:', Object.keys(response || {}));
+        addToast({
+          type: 'warning',
+          message: 'No applicant data found for this application',
+        });
       }
     } catch (err: any) {
-      console.error('Failed to load applicant data:', err);
+      console.error('PersonalInformation: ❌ Failed to load applicant data:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        stack: err.stack
+      });
       addToast({
         type: 'error',
-        message: 'Failed to load applicant data',
+        message: err.response?.data?.error || err.message || 'Failed to load applicant data',
       });
     } finally {
       setFetching(false);
+      console.log('PersonalInformation: Data loading completed, fetching = false');
     }
   };
 
@@ -270,7 +342,7 @@ export default function RMPersonalInformation() {
       
       // Get application to find applicantId
       const application = await rmAPI.applications.get(id);
-      const applicantId = application.data?.applicant_id;
+      const applicantId = application.data?.applicant_id || (application as any)?.applicant_id;
       
       if (!applicantId) {
         addToast({

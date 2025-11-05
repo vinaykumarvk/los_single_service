@@ -83,23 +83,58 @@ export default function RMBankVerification() {
   }, [id]);
 
   const loadExistingData = async () => {
-    if (!id) return;
+    if (!id) {
+      console.warn('BankVerification: Cannot load data - no application ID');
+      return;
+    }
 
     try {
       setFetching(true);
-      // Try to load existing bank verification data
+      console.log('BankVerification: Loading bank data for application:', id);
+      
       const applicantResponse = await rmAPI.applicants.get(id);
-      if (applicantResponse.data) {
-        const applicant = applicantResponse.data;
-        setValue('accountHolderName', applicant.bank_account_holder_name || applicant.account_holder_name || '');
-        setValue('accountNumber', applicant.bank_account_number || '');
-        setValue('ifsc', applicant.bank_ifsc || '');
-        setValue('bankName', applicant.bank_name || '');
+      console.log('BankVerification: Full API response:', applicantResponse);
+      
+      // Handle axios response structure
+      let applicant = null;
+      if (applicantResponse?.data?.data && typeof applicantResponse.data.data === 'object') {
+        applicant = applicantResponse.data.data;
+        console.log('BankVerification: ✅ Found data in axios response structure');
+      } else if (applicantResponse?.data && typeof applicantResponse.data === 'object' && 'bank_account_number' in applicantResponse.data) {
+        applicant = applicantResponse.data;
+        console.log('BankVerification: ✅ Found data in direct structure');
+      }
+      
+      if (applicant) {
+        console.log('BankVerification: Setting form values for applicant:', applicant);
+        
+        const fields = {
+          accountHolderName: applicant.bank_account_holder_name || applicant.account_holder_name || applicant.first_name + ' ' + (applicant.last_name || ''),
+          accountNumber: applicant.bank_account_number || '',
+          ifsc: applicant.bank_ifsc || '',
+          bankName: applicant.bank_name || '',
+        };
+        
+        console.log('BankVerification: Form fields to set:', fields);
+        
+        Object.entries(fields).forEach(([key, value]) => {
+          setValue(key as any, value);
+          console.log(`BankVerification: Set ${key} = ${value}`);
+        });
+        
+        console.log('BankVerification: ✅ All form values set successfully');
+      } else {
+        console.warn('BankVerification: No bank data found in response');
       }
     } catch (err: any) {
-      console.error('Failed to load bank data:', err);
+      console.error('BankVerification: ❌ Failed to load bank data:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+      });
     } finally {
       setFetching(false);
+      console.log('BankVerification: Data loading completed');
     }
   };
 

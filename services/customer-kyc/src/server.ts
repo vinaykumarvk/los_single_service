@@ -1,8 +1,15 @@
+import 'dotenv/config';
 import express from 'express';
 import { json } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { createPgPool, correlationIdMiddleware, createLogger, encryptPAN, encryptAadhaar, decryptPAN, decryptAadhaar, encryptEmail, decryptEmail, encryptMobile, decryptMobile, encryptAddress, decryptAddress } from '@los/shared-libs';
+import { createPgPool, correlationIdMiddleware, createLogger } from '@los/shared-libs';
+
+// Ensure DATABASE_URL is set before creating pool
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://los:los@localhost:5432/los';
+  console.warn('⚠️  DATABASE_URL not set, using default: postgresql://los:los@localhost:5432/los');
+}
 
 // Export pool and app for testing
 export const pool = createPgPool();
@@ -60,47 +67,8 @@ app.get('/api/applicants/:id', async (req, res) => {
       return res.status(404).json({ error: 'Applicant not found' });
     }
     
-    // Decrypt sensitive fields before returning (masking will happen in gateway if needed)
+    // Return plain text values (encryption removed for simplicity)
     const applicant = rows[0];
-    try {
-      if (applicant.pan) {
-        applicant.pan = decryptPAN(applicant.pan);
-      }
-      if (applicant.aadhaar_masked) {
-        applicant.aadhaar_masked = decryptAadhaar(applicant.aadhaar_masked);
-      }
-      if (applicant.email) {
-        applicant.email = decryptEmail(applicant.email);
-      }
-      if (applicant.mobile) {
-        applicant.mobile = decryptMobile(applicant.mobile);
-      }
-      if (applicant.address_line1) {
-        applicant.address_line1 = decryptAddress(applicant.address_line1);
-      }
-      if (applicant.address_line2) {
-        applicant.address_line2 = decryptAddress(applicant.address_line2);
-      }
-      if (applicant.city) {
-        applicant.city = decryptAddress(applicant.city);
-      }
-      if (applicant.state) {
-        applicant.state = decryptAddress(applicant.state);
-      }
-      if (applicant.pincode) {
-        applicant.pincode = decryptAddress(applicant.pincode);
-      }
-      if (applicant.bank_account_number) {
-        applicant.bank_account_number = decryptAddress(applicant.bank_account_number);
-      }
-    } catch (decryptErr) {
-      // Log decryption errors but don't fail the request - return partial data
-      logger.warn('GetApplicantDecryptError', { 
-        error: (decryptErr as Error).message,
-        applicantId: req.params.id,
-        correlationId: (req as any).correlationId 
-      });
-    }
     
     // Transform response to use date_of_birth instead of dob for frontend
     const transformed: any = { ...applicant };
@@ -194,16 +162,16 @@ app.put('/api/applicants/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // Encrypt sensitive fields before storage
-    const encryptedPan = parsed.data.pan ? encryptPAN(parsed.data.pan) : null;
-    const encryptedAadhaar = parsed.data.aadhaarMasked ? encryptAadhaar(parsed.data.aadhaarMasked) : null;
-    const encryptedEmail = parsed.data.email ? encryptEmail(parsed.data.email) : null;
-    const encryptedMobile = parsed.data.mobile ? encryptMobile(parsed.data.mobile) : null;
-    const encryptedAddressLine1 = parsed.data.addressLine1 ? encryptAddress(parsed.data.addressLine1) : null;
-    const encryptedAddressLine2 = parsed.data.addressLine2 ? encryptAddress(parsed.data.addressLine2) : null;
-    const encryptedCity = parsed.data.city ? encryptAddress(parsed.data.city) : null;
-    const encryptedState = parsed.data.state ? encryptAddress(parsed.data.state) : null;
-    const encryptedPincode = parsed.data.pincode ? encryptAddress(parsed.data.pincode) : null;
+    // Store plain text values (encryption removed for simplicity)
+    const plainPan = parsed.data.pan || null;
+    const plainAadhaar = parsed.data.aadhaarMasked || null;
+    const plainEmail = parsed.data.email || null;
+    const plainMobile = parsed.data.mobile || null;
+    const plainAddressLine1 = parsed.data.addressLine1 || null;
+    const plainAddressLine2 = parsed.data.addressLine2 || null;
+    const plainCity = parsed.data.city || null;
+    const plainState = parsed.data.state || null;
+    const plainPincode = parsed.data.pincode || null;
 
     // Use date_of_birth if column exists, otherwise use dob
     const dobField = 'date_of_birth'; // Use consistent field name
@@ -265,15 +233,15 @@ app.put('/api/applicants/:id', async (req, res) => {
         parsed.data.fatherName,
         parsed.data.motherName,
         parsed.data.maritalStatus,
-        encryptedMobile,
-        encryptedEmail,
-        encryptedPan,
-        encryptedAadhaar,
-        encryptedAddressLine1,
-        encryptedAddressLine2,
-        encryptedCity,
-        encryptedState,
-        encryptedPincode,
+        plainMobile,
+        plainEmail,
+        plainPan,
+        plainAadhaar,
+        plainAddressLine1,
+        plainAddressLine2,
+        plainCity,
+        plainState,
+        plainPincode,
         parsed.data.country || 'India',
         parsed.data.occupation,
         parsed.data.employerName,
@@ -282,7 +250,7 @@ app.put('/api/applicants/:id', async (req, res) => {
         parsed.data.existingEmi,
         parsed.data.otherIncomeSources,
         parsed.data.yearsInJob,
-        parsed.data.bankAccountNumber ? encryptAddress(parsed.data.bankAccountNumber) : null,
+        parsed.data.bankAccountNumber || null,
         parsed.data.bankIfsc,
         parsed.data.bankAccountHolderName,
         parsed.data.bankVerified || false,

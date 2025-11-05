@@ -14,7 +14,7 @@ import Input from '../../components/ui/Input';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { rmAPI } from '../lib/api';
 import { useToast as useToastHook } from '../../components/ui/Toast';
-import { ArrowLeft, ArrowRight, Save, Briefcase, DollarSign, FileText, CheckCircle2, AlertCircle, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Briefcase, DollarSign, CheckCircle2, AlertCircle } from 'lucide-react';
 import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 const employmentSchema = z.object({
@@ -92,28 +92,68 @@ export default function RMEmploymentDetails() {
   }, [id]);
 
   const loadExistingData = async () => {
-    if (!id) return;
+    if (!id) {
+      console.warn('EmploymentDetails: Cannot load data - no application ID');
+      return;
+    }
 
     try {
       setFetching(true);
+      console.log('EmploymentDetails: Loading employment data for application:', id);
+      
       const response = await rmAPI.applicants.get(id);
-      if (response.data) {
-        const applicant = response.data;
-        setValue('employmentType', applicant.employment_type as any);
-        setValue('employerName', applicant.employer_name || '');
-        setValue('businessName', applicant.business_name || '');
-        setValue('monthlyIncome', applicant.monthly_income?.toString() || '');
-        setValue('yearsInJob', applicant.years_in_job?.toString() || '');
-        setValue('otherIncomeSources', applicant.other_income_sources ? applicant.other_income_sources.toString() : '');
+      console.log('EmploymentDetails: Full API response:', response);
+      
+      // Handle axios response structure
+      let applicant = null;
+      if (response?.data?.data && typeof response.data.data === 'object') {
+        applicant = response.data.data;
+        console.log('EmploymentDetails: ✅ Found data in axios response structure (response.data.data)');
+      } else if (response?.data && typeof response.data === 'object' && 'employment_type' in response.data) {
+        applicant = response.data;
+        console.log('EmploymentDetails: ✅ Found data in direct structure (response.data)');
+      }
+      
+      if (applicant) {
+        console.log('EmploymentDetails: Setting form values for applicant:', applicant);
+        
+        const fields = {
+          employmentType: applicant.employment_type as any,
+          employerName: applicant.employer_name || '',
+          businessName: applicant.business_name || '',
+          monthlyIncome: applicant.monthly_income?.toString() || '',
+          yearsInJob: applicant.years_in_job?.toString() || '',
+          otherIncomeSources: applicant.other_income_sources ? applicant.other_income_sources.toString() : '',
+        };
+        
+        console.log('EmploymentDetails: Form fields to set:', fields);
+        
+        Object.entries(fields).forEach(([key, value]) => {
+          setValue(key as any, value);
+          console.log(`EmploymentDetails: Set ${key} = ${value}`);
+        });
+        
+        console.log('EmploymentDetails: ✅ All form values set successfully');
+      } else {
+        console.error('EmploymentDetails: ❌ No applicant data found in response');
+        addToast({
+          type: 'warning',
+          message: 'No employment data found for this application',
+        });
       }
     } catch (err: any) {
-      console.error('Failed to load employment data:', err);
+      console.error('EmploymentDetails: ❌ Failed to load employment data:', err);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+      });
       addToast({
         type: 'error',
-        message: 'Failed to load employment data',
+        message: err.response?.data?.error || err.message || 'Failed to load employment data',
       });
     } finally {
       setFetching(false);
+      console.log('EmploymentDetails: Data loading completed');
     }
   };
 
@@ -347,33 +387,6 @@ export default function RMEmploymentDetails() {
                 Calculated as: (Monthly Income × 12) + (Other Income × 12)
               </p>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Document Upload */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              <CardTitle>Income Documents (Optional)</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Upload salary slips or ITR for automatic income validation
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(`/rm/applications/${id}/documents`)}
-              className="touch-manipulation min-h-[44px]"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Documents
-            </Button>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Documents can be uploaded and parsed later
-            </p>
           </CardContent>
         </Card>
 

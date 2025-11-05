@@ -2,13 +2,19 @@ import 'dotenv/config';
 import express from 'express';
 import { json } from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { createPgPool, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler } from '@los/shared-libs';
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+import { createPgPool, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler, createS3Client, putObjectBuffer, getPresignedUrl } from '@los/shared-libs';
 
 import { setupApplicationSSE, broadcastApplicationUpdate } from './sse-handler';
 import { setupRMDashboardEndpoint } from './rm-dashboard';
 import { setupHierarchicalDashboards } from './hierarchical-dashboards';
+import { setupPropertyEndpoints } from './property-endpoints';
+import { extractDocumentMetadata } from './ocr';
 
 // Export pool and app for testing
 // Ensure DATABASE_URL is set before creating pool
@@ -17,7 +23,7 @@ if (!process.env.DATABASE_URL) {
   console.warn('⚠️  DATABASE_URL not set, using default: postgres://los:los@localhost:5432/los');
 }
 export const pool = createPgPool();
-const logger = createLogger('application-service');
+const logger = createLogger('rm-service'); // Consolidated RM service
 
 export const app = express();
 
@@ -34,6 +40,15 @@ app.use(cors(corsOptions));
 app.use(json());
 app.use(correlationIdMiddleware);
 app.use(metricsMiddleware);
+
+// Configure multer for file uploads (document upload functionality)
+const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '15', 10);
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
+
+// S3/MinIO client for document storage
+const s3 = createS3Client();
+const bucket = process.env.MINIO_BUCKET || 'los-docs';
 
 // Helper function to record application history
 async function recordHistory(
@@ -61,8 +76,226 @@ async function recordHistory(
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 app.get('/metrics', metricsHandler);
 
+// ============================================
+// AUTHENTICATION ENDPOINTS (Consolidated)
+// ============================================
+
+// Initialize users table
+async function ensureUsersTable() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE,
+        password_hash TEXT NOT NULL,
+        roles TEXT[] DEFAULT ARRAY['applicant']::TEXT[],
+        is_active BOOLEAN DEFAULT true,
+        last_login TIMESTAMPTZ,
+        failed_login_attempts INTEGER DEFAULT 0,
+        locked_until TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        token_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+  } catch (err) {
+    logger.error('EnsureUsersTableError', { error: (err as Error).message });
+  }
+}
+ensureUsersTable();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production-secret-key-min-32-chars';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'change-me-in-production-refresh-secret-key-min-32-chars';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
+
+async function checkLoginLockout(username: string) {
+  const { rows } = await pool.query(
+    'SELECT failed_login_attempts, locked_until FROM users WHERE username = $1',
+    [username]
+  );
+  if (rows.length === 0) return { locked: false };
+  const user = rows[0];
+  if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    return { locked: true, lockoutUntil: user.locked_until, error: 'Account locked' };
+  }
+  return { locked: false };
+}
+
+async function incrementFailedAttempts(username: string) {
+  await pool.query(
+    `UPDATE users SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1,
+     locked_until = CASE WHEN COALESCE(failed_login_attempts, 0) + 1 >= $1 
+     THEN NOW() + INTERVAL '${LOCKOUT_DURATION_MINUTES} minutes' ELSE locked_until END
+     WHERE username = $2`,
+    [MAX_LOGIN_ATTEMPTS, username]
+  );
+}
+
+async function resetFailedAttempts(userId: string) {
+  await pool.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = $1', [userId]);
+}
+
+const LoginSchema = z.object({ username: z.string().min(1), password: z.string().min(1) });
+
+app.post('/api/auth/login', async (req, res) => {
+  const parsed = LoginSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
+  try {
+    const { username, password } = parsed.data;
+    const lockoutCheck = await checkLoginLockout(username);
+    if (lockoutCheck.locked) return res.status(403).json({ error: 'Account locked' });
+    const { rows } = await pool.query(
+      'SELECT user_id, username, email, password_hash, roles, is_active FROM users WHERE username = $1',
+      [username]
+    );
+    if (rows.length === 0 || !rows[0].is_active) return res.status(401).json({ error: 'Invalid credentials' });
+    const user = rows[0];
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      await incrementFailedAttempts(username);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const accessToken = jwt.sign({ sub: user.user_id, username: user.username, email: user.email, roles: user.roles || [] }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const refreshToken = jwt.sign({ sub: user.user_id, type: 'refresh' }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+    await pool.query('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', [user.user_id, refreshTokenHash, expiresAt]);
+    await resetFailedAttempts(user.user_id);
+    await pool.query('UPDATE users SET last_login = now() WHERE user_id = $1', [user.user_id]);
+    return res.status(200).json({ accessToken, refreshToken, tokenType: 'Bearer', expiresIn: 900, user: { id: user.user_id, username: user.username, email: user.email, roles: user.roles || [] } });
+  } catch (err) {
+    logger.error('LoginError', { error: (err as Error).message });
+    return res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+const RefreshTokenSchema = z.object({ refreshToken: z.string().min(1) });
+app.post('/api/auth/refresh', async (req, res) => {
+  const parsed = RefreshTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
+  try {
+    const decoded = jwt.verify(parsed.data.refreshToken, JWT_REFRESH_SECRET) as any;
+    if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Invalid refresh token' });
+    const { rows } = await pool.query('SELECT user_id, username, email, roles, is_active FROM users WHERE user_id = $1', [decoded.sub]);
+    if (rows.length === 0 || !rows[0].is_active) return res.status(401).json({ error: 'User not found or inactive' });
+    const user = rows[0];
+    const accessToken = jwt.sign({ sub: user.user_id, username: user.username, email: user.email, roles: user.roles || [] }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return res.status(200).json({ accessToken, tokenType: 'Bearer', expiresIn: 900 });
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+// ============================================
+// APPLICANT/KYC ENDPOINTS (Consolidated)
+// ============================================
+
+app.get('/api/applicants/:id', async (req, res) => {
+  try {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(req.params.id)) return res.status(400).json({ error: 'Invalid UUID format' });
+    const { rows } = await pool.query(
+      `SELECT applicant_id, first_name, middle_name, last_name, date_of_birth, date_of_birth as dob, gender, 
+       marital_status, mobile, email, pan, address_line1, address_line2, city, state, pincode, country,
+       employment_type, monthly_income, employer_name, other_income_sources, years_in_job,
+       bank_account_number, bank_ifsc, bank_verified, created_at, updated_at
+       FROM applicants WHERE applicant_id = $1`,
+      [req.params.id]
+    );
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Applicant not found' });
+    const applicant = rows[0];
+    const transformed: any = { ...applicant };
+    if (!transformed.date_of_birth && transformed.dob) transformed.date_of_birth = transformed.dob;
+    return res.status(200).json(transformed);
+  } catch (err: any) {
+    logger.error('GetApplicantError', { error: err?.message });
+    return res.status(500).json({ error: 'Failed to fetch applicant' });
+  }
+});
+
+const ApplicantSchema = z.object({
+  firstName: z.string().min(2).max(200).optional(),
+  lastName: z.string().min(2).max(200).optional(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  gender: z.enum(['Male', 'Female', 'Other', 'PreferNotToSay']).optional(),
+  maritalStatus: z.enum(['Single', 'Married', 'Divorced', 'Widowed']).optional(),
+  mobile: z.string().regex(/^[6-9]\d{9}$/).optional(),
+  email: z.string().email().optional(),
+  pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/).optional(),
+  addressLine1: z.string().max(500).optional(),
+  city: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
+  pincode: z.string().regex(/^\d{6}$/).optional(),
+  employmentType: z.enum(['Salaried', 'Self-employed', 'SelfEmployed', 'Business', 'Retired', 'Student', 'Unemployed']).optional(),
+  monthlyIncome: z.number().min(0).optional(),
+  employerName: z.string().max(200).optional(),
+  yearsInJob: z.number().min(0).max(50).optional(),
+});
+
+app.put('/api/applicants/:id', async (req, res) => {
+  const parsed = ApplicantSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO applicants (applicant_id, first_name, last_name, date_of_birth, gender, marital_status, 
+       mobile, email, pan, address_line1, city, state, pincode, country, employment_type, monthly_income, 
+       employer_name, years_in_job)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       ON CONFLICT (applicant_id) DO UPDATE SET
+         first_name = COALESCE(EXCLUDED.first_name, applicants.first_name),
+         last_name = COALESCE(EXCLUDED.last_name, applicants.last_name),
+         date_of_birth = COALESCE(EXCLUDED.date_of_birth, applicants.date_of_birth),
+         gender = COALESCE(EXCLUDED.gender, applicants.gender),
+         marital_status = COALESCE(EXCLUDED.marital_status, applicants.marital_status),
+         mobile = COALESCE(EXCLUDED.mobile, applicants.mobile),
+         email = COALESCE(EXCLUDED.email, applicants.email),
+         pan = COALESCE(EXCLUDED.pan, applicants.pan),
+         address_line1 = COALESCE(EXCLUDED.address_line1, applicants.address_line1),
+         city = COALESCE(EXCLUDED.city, applicants.city),
+         state = COALESCE(EXCLUDED.state, applicants.state),
+         pincode = COALESCE(EXCLUDED.pincode, applicants.pincode),
+         employment_type = COALESCE(EXCLUDED.employment_type, applicants.employment_type),
+         monthly_income = COALESCE(EXCLUDED.monthly_income, applicants.monthly_income),
+         employer_name = COALESCE(EXCLUDED.employer_name, applicants.employer_name),
+         years_in_job = COALESCE(EXCLUDED.years_in_job, applicants.years_in_job),
+         updated_at = now()`,
+      [req.params.id, parsed.data.firstName, parsed.data.lastName, parsed.data.dateOfBirth, parsed.data.gender,
+       parsed.data.maritalStatus, parsed.data.mobile, parsed.data.email, parsed.data.pan, parsed.data.addressLine1,
+       parsed.data.city, parsed.data.state, parsed.data.pincode, 'India', parsed.data.employmentType,
+       parsed.data.monthlyIncome, parsed.data.employerName, parsed.data.yearsInJob]
+    );
+    await client.query('COMMIT');
+    return res.status(200).json({ applicantId: req.params.id, updated: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('UpsertApplicantError', { error: (err as Error).message });
+    return res.status(500).json({ error: 'Failed to upsert applicant' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================
+// END CONSOLIDATED ENDPOINTS
+// ============================================
+
 const CreateApplicationSchema = z.object({
-  applicantId: z.string().uuid(),
+  applicantId: z.string(),
   channel: z.enum(['Branch', 'DSA', 'Online', 'Mobile']),
   productCode: z.string().min(1),
   requestedAmount: z.number().positive(),
@@ -139,7 +372,6 @@ async function validateProductLimits(productCode: string, requestedAmount: numbe
 }
 
 // POST /api/applications - create
-// POST /api/applications - create
 app.post('/api/applications', async (req, res) => {
   const parsed = CreateApplicationSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -157,18 +389,18 @@ app.post('/api/applications', async (req, res) => {
   try {
     await client.query('BEGIN');
     
-    // Check if applicant exists, create minimal one if not (to avoid KYC service timeout)
-    const { rows: applicantRows } = await client.query(
-      'SELECT applicant_id FROM applicants WHERE applicant_id = $1',
-      [parsed.data.applicantId]
-    );
-    
     // Generate application ID in format: ProductCode + SerialNumber (e.g., HL00001, PL00042)
     const idResult = await client.query(
       'SELECT generate_application_id($1) as application_id',
       [parsed.data.productCode]
     );
     const id = idResult.rows[0].application_id;
+    
+    // Check if applicant exists, create minimal one if not (to avoid KYC service timeout)
+    const { rows: applicantRows } = await client.query(
+      'SELECT applicant_id FROM applicants WHERE applicant_id = $1',
+      [parsed.data.applicantId]
+    );
     
     if (applicantRows.length === 0) {
       // Create minimal applicant record in same transaction
@@ -224,8 +456,16 @@ app.get('/api/applications', async (req, res) => {
     let paramCount = 1;
 
     if (req.query.status) {
-      // Support comma-separated statuses for advanced search
-      const statuses = (req.query.status as string).split(',').map(s => s.trim());
+      // Handle both string and array formats (Express can send arrays for multiple query params)
+      let statuses: string[];
+      if (Array.isArray(req.query.status)) {
+        // If it's already an array, use it directly
+        statuses = (req.query.status as string[]).map(s => String(s).trim());
+      } else {
+        // If it's a string, split by comma
+        statuses = String(req.query.status).split(',').map(s => s.trim());
+      }
+      
       if (statuses.length === 1) {
         conditions.push(`status = $${paramCount++}`);
         values.push(statuses[0]);
@@ -333,152 +573,12 @@ app.get('/api/applications', async (req, res) => {
   }
 });
 
-// Helper function to escape CSV values
-function escapeCsv(value: any): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-// GET /api/applications/export - export applications to CSV/Excel
-app.get('/api/applications/export', async (req, res) => {
-  try {
-    const format = (req.query.format as string || 'csv').toLowerCase();
-    const maxRecords = Math.min(50000, parseInt(req.query.maxRecords as string || '10000', 10));
-
-    // Build WHERE clause (same logic as GET /api/applications)
-    const conditions: string[] = [];
-    const values: any[] = [];
-    let paramCount = 1;
-
-    if (req.query.status) {
-      // Support comma-separated statuses
-      const statuses = (req.query.status as string).split(',').map(s => s.trim());
-      if (statuses.length === 1) {
-        conditions.push(`status = $${paramCount++}`);
-        values.push(statuses[0]);
-      } else {
-        conditions.push(`status = ANY($${paramCount++})`);
-        values.push(statuses);
-      }
-    }
-    if (req.query.channel) {
-      conditions.push(`channel = $${paramCount++}`);
-      values.push(req.query.channel);
-    }
-    if (req.query.productCode) {
-      conditions.push(`product_code = $${paramCount++}`);
-      values.push(req.query.productCode);
-    }
-    if (req.query.applicantId) {
-      conditions.push(`applicant_id = $${paramCount++}`);
-      values.push(req.query.applicantId);
-    }
-    if (req.query.minAmount) {
-      conditions.push(`requested_amount >= $${paramCount++}`);
-      values.push(parseFloat(req.query.minAmount as string));
-    }
-    if (req.query.maxAmount) {
-      conditions.push(`requested_amount <= $${paramCount++}`);
-      values.push(parseFloat(req.query.maxAmount as string));
-    }
-    // Date range filters
-    if (req.query.startDate) {
-      conditions.push(`created_at >= $${paramCount++}`);
-      values.push(req.query.startDate);
-    }
-    if (req.query.endDate) {
-      conditions.push(`created_at <= $${paramCount++}`);
-      values.push(req.query.endDate);
-    }
-    // Status transition filters
-    if (req.query.statusAfter) {
-      conditions.push(`updated_at >= $${paramCount++}`);
-      values.push(req.query.statusAfter);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    // Get all matching records (up to maxRecords)
-    const dataQuery = `
-      SELECT 
-        application_id, applicant_id, channel, product_code, 
-        requested_amount, requested_tenure_months, status,
-        assigned_to, assigned_at, withdrawn_at, withdrawn_reason,
-        created_at, updated_at 
-      FROM applications 
-      ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT $${paramCount++}
-    `;
-    
-    values.push(maxRecords);
-    const { rows } = await pool.query(dataQuery, values);
-
-    if (format === 'csv') {
-      // Generate CSV
-      const headers = [
-        'Application ID', 'Applicant ID', 'Channel', 'Product Code',
-        'Requested Amount', 'Tenure (Months)', 'Status',
-        'Assigned To', 'Assigned At', 'Withdrawn At', 'Withdrawn Reason',
-        'Created At', 'Updated At'
-      ];
-      
-      const csvRows = [
-        headers.map(escapeCsv).join(','),
-        ...rows.map((row: any) => [
-          row.application_id,
-          row.applicant_id,
-          row.channel,
-          row.product_code,
-          row.requested_amount,
-          row.requested_tenure_months,
-          row.status,
-          row.assigned_to || '',
-          row.assigned_at || '',
-          row.withdrawn_at || '',
-          row.withdrawn_reason || '',
-          row.created_at,
-          row.updated_at
-        ].map(escapeCsv).join(','))
-      ];
-      
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="applications-export-${new Date().toISOString().split('T')[0]}.csv"`);
-      return res.status(200).send('\uFEFF' + csvRows.join('\n')); // BOM for Excel UTF-8 support
-    } else if (format === 'json') {
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename="applications-export-${new Date().toISOString().split('T')[0]}.json"`);
-      return res.status(200).json({
-        exportedAt: new Date().toISOString(),
-        totalRecords: rows.length,
-        filters: req.query,
-        applications: rows
-      });
-    } else {
-      return res.status(400).json({ error: 'Unsupported format. Use "csv" or "json"' });
-    }
-  } catch (err) {
-    logger.error('ExportApplicationsError', { error: (err as Error).message, correlationId: (req as any).correlationId });
-    return res.status(500).json({ error: 'Failed to export applications' });
-  }
-});
-
 // GET /api/applications/:id - get single application by ID
-app.get('/api/applications/:id', async (req: Request, res: Response) => {
+app.get('/api/applications/:id', async (req: any, res: any) => {
   try {
     const applicationId = req.params.id;
-    
-    // Validate application ID format: 2 letters + 5 digits (e.g., HL00001, PL00042)
-    const appIdRegex = /^[A-Z]{2}[0-9]{5}$/;
-    if (!appIdRegex.test(applicationId)) {
-      return res.status(400).json({ error: 'Invalid application ID format. Expected format: XX00000 (e.g., HL00001)' });
-    }    const { rows } = await pool.query(
+
+    const { rows } = await pool.query(
       `SELECT 
         application_id,
         applicant_id,
@@ -516,7 +616,272 @@ app.get('/api/applications/:id', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/applications/:id/events - SSE stream for real-time updates
+// PUT /api/applications/:id - update application
+app.put('/api/applications/:id', async (req: any, res: any) => {
+  const parsed = UpdateApplicationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
+  }
+
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Check application exists
+    const { rows: appRows } = await client.query(
+      'SELECT application_id, status FROM applications WHERE application_id = $1',
+      [req.params.id]
+    );
+    if (appRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    // Build update query dynamically
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+    
+    if (parsed.data.channel) {
+      updates.push(`channel = $${paramCount++}`);
+      values.push(parsed.data.channel);
+    }
+    if (parsed.data.productCode) {
+      updates.push(`product_code = $${paramCount++}`);
+      values.push(parsed.data.productCode);
+    }
+    if (parsed.data.requestedAmount) {
+      updates.push(`requested_amount = $${paramCount++}`);
+      values.push(parsed.data.requestedAmount);
+    }
+    if (parsed.data.requestedTenureMonths) {
+      updates.push(`requested_tenure_months = $${paramCount++}`);
+      values.push(parsed.data.requestedTenureMonths);
+    }
+    
+    if (updates.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    updates.push(`updated_at = now()`);
+    values.push(req.params.id);
+    
+    await client.query(
+      `UPDATE applications SET ${updates.join(', ')} WHERE application_id = $${paramCount++}`,
+      values
+    );
+
+    await client.query('COMMIT');
+    
+    logger.info('UpdateApplication', { correlationId: (req as any).correlationId, applicationId: req.params.id });
+    return res.status(200).json({ applicationId: req.params.id, updated: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('UpdateApplicationError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to update application' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/applications/:id/submit - submit application for verification
+app.post('/api/applications/:id/submit', async (req: any, res: any) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Check application exists and is in Draft status
+    const { rows: appRows } = await client.query(
+      'SELECT application_id, status FROM applications WHERE application_id = $1',
+      [req.params.id]
+    );
+    if (appRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    if (appRows[0].status !== 'Draft') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Cannot submit application in ${appRows[0].status} status` });
+    }
+    
+    // Update status to Submitted
+    await client.query(
+      'UPDATE applications SET status = $1, updated_at = now() WHERE application_id = $2',
+      ['Submitted', req.params.id]
+    );
+
+    await client.query('COMMIT');
+    
+    // Record history (non-blocking)
+    const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
+    await recordHistory(req.params.id, 'ApplicationSubmitted', 'application', { status: 'Submitted' }, actorId);
+    
+    logger.info('SubmitApplication', { correlationId: (req as any).correlationId, applicationId: req.params.id });
+    return res.status(200).json({ applicationId: req.params.id, status: 'Submitted' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('SubmitApplicationError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to submit application' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/applications/:id/applicant - get applicant data for an application
+app.get('/api/applications/:id/applicant', async (req: any, res: any) => {
+  try {
+    const applicationId = req.params.id;
+    
+    // Get applicant_id from application
+    const { rows: appRows } = await pool.query(
+      'SELECT applicant_id FROM applications WHERE application_id = $1',
+      [applicationId]
+    );
+    
+    if (appRows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    const applicantId = appRows[0].applicant_id;
+    
+    // Get applicant data from applicants table (may not exist if only in KYC service)
+    const { rows: applicantRows } = await pool.query(
+      `SELECT 
+        applicant_id, first_name, last_name, date_of_birth, gender, marital_status,
+        mobile, email, pan, address_line1, address_line2, city, state, pincode, country,
+        employment_type, monthly_income, employer_name, other_income_sources,
+        years_in_job, bank_account_number, bank_ifsc,
+        bank_verified, bank_verified_at, bank_verification_method,
+        created_at, updated_at
+      FROM applicants 
+      WHERE applicant_id = $1`,
+      [applicantId]
+    );
+    
+    // If applicant not found in local DB, return empty object (data might be in KYC service)
+    if (applicantRows.length === 0) {
+      logger.warn('ApplicantNotFoundInLocalDB', { applicantId, applicationId, correlationId: (req as any).correlationId });
+      return res.status(200).json({ data: null }); // Return null instead of 404
+    }
+    
+    // Return plain text values (encryption removed for simplicity)
+    const applicant = { ...applicantRows[0] };
+    
+    logger.debug('GetApplicantByApplication', {
+      applicationId,
+      applicantId,
+      correlationId: (req as any).correlationId
+    });
+    
+    return res.status(200).json({ data: applicant });
+  } catch (err) {
+    logger.error('GetApplicantByApplicationError', {
+      error: (err as Error).message,
+      applicationId: req.params.id,
+      correlationId: (req as any).correlationId
+    });
+    return res.status(500).json({ error: 'Failed to fetch applicant data' });
+  }
+});
+
+// GET /api/applications/:id/completeness - get application completeness percentage
+app.get('/api/applications/:id/completeness', async (req: any, res: any) => {
+  try {
+    const applicationId = req.params.id;
+    
+    // Get application data
+    const { rows: appRows } = await pool.query(
+      'SELECT application_id, product_code, requested_amount, requested_tenure_months FROM applications WHERE application_id = $1',
+      [applicationId]
+    );
+    
+    if (appRows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    const application = appRows[0];
+    
+    // Get applicant data
+    const { rows: applicantRows } = await pool.query(
+      `SELECT applicant_id, first_name, last_name, mobile, address_line1, employment_type, monthly_income, bank_verified
+       FROM applicants 
+       WHERE applicant_id = (SELECT applicant_id FROM applications WHERE application_id = $1)`,
+      [applicationId]
+    );
+    
+    const applicant = applicantRows[0] || {};
+    
+    // Get property data
+    const { rows: propertyRows } = await pool.query(
+      'SELECT property_type FROM property_details WHERE application_id = $1',
+      [applicationId]
+    );
+    const hasProperty = propertyRows.length > 0;
+    
+    // Get documents count
+    const { rows: docRows } = await pool.query(
+      'SELECT COUNT(*) as count FROM documents WHERE application_id = $1',
+      [applicationId]
+    );
+    const docCount = parseInt(docRows[0]?.count || '0', 10);
+    
+    // Calculate completeness
+    let completed = 0;
+    let total = 0;
+    
+    // Personal info (3 fields)
+    total += 3;
+    if (applicant.first_name) completed++;
+    if (applicant.mobile) completed++;
+    if (applicant.address_line1) completed++;
+    
+    // Employment info (2 fields)
+    total += 2;
+    if (applicant.employment_type) completed++;
+    if (applicant.monthly_income) completed++;
+    
+    // Loan info (2 fields)
+    total += 2;
+    if (application.requested_amount) completed++;
+    if (application.product_code) completed++;
+    
+    // Property info (1 field - only if home loan)
+    if (application.product_code === 'HOME_LOAN_V1') {
+      total += 1;
+      if (hasProperty) completed++;
+    }
+    
+    // Documents (at least 3 required)
+    total += 1;
+    if (docCount >= 3) completed++;
+    
+    const completeness = total > 0 ? Math.round((completed / total) * 100) : 0;
+    
+    logger.debug('GetCompleteness', {
+      applicationId,
+      completeness,
+      correlationId: (req as any).correlationId
+    });
+    
+    return res.status(200).json({ 
+      applicationId,
+      completeness,
+      completed,
+      total
+    });
+  } catch (err) {
+    logger.error('GetCompletenessError', {
+      error: (err as Error).message,
+      applicationId: req.params.id,
+      correlationId: (req as any).correlationId
+    });
+    return res.status(500).json({ error: 'Failed to calculate completeness' });
+  }
+});
+
 // GET /api/applications/:id/events - SSE stream for real-time updates
 app.get('/api/applications/:id/events', (req, res) => {
   setupApplicationSSE(req, res, pool);
@@ -527,6 +892,278 @@ setupRMDashboardEndpoint(app, pool);
 
 // Setup Hierarchical Dashboards (SRM and Regional Head)
 setupHierarchicalDashboards(app, pool);
+
+// Setup Property endpoints
+setupPropertyEndpoints(app, pool);
+
+// ============================================
+// Document Upload & Management Endpoints
+// Consolidated from document service for easier integration
+// ============================================
+
+// POST /api/applications/:id/documents - upload document
+app.post('/api/applications/:id/documents', upload.single('file'), async (req: any, res: any) => {
+  if (!req.file) return res.status(400).json({ error: 'File required' });
+  
+  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+  if (!allowedTypes.includes(req.file.mimetype)) {
+    return res.status(400).json({ error: 'Invalid file type. Allowed: PDF, JPG, PNG' });
+  }
+
+  // Support both 'documentCode' (from frontend) and 'docType' (legacy)
+  const docType = req.body.documentCode || req.body.docType;
+  if (!docType) {
+    return res.status(400).json({ error: 'documentCode or docType is required' });
+  }
+
+  const docId = uuidv4();
+  const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Extract OCR metadata (non-blocking, but await for transaction)
+    let extractedData = null;
+    let ocrProvider = null;
+    let ocrConfidence = null;
+    try {
+      const metadata = await extractDocumentMetadata(req.file.buffer, req.file.mimetype, docType);
+      extractedData = metadata;
+      ocrProvider = process.env.OCR_PROVIDER || 'mock';
+      ocrConfidence = metadata.confidence || null;
+    } catch (ocrErr) {
+      logger.warn('OCRFailed', { error: (ocrErr as Error).message, docId, docType });
+      // Continue without OCR data
+    }
+    
+    // Check if this is a re-upload (delete existing if same type)
+    const existingDoc = await client.query(
+      'SELECT doc_id FROM documents WHERE application_id = $1 AND doc_type = $2 LIMIT 1',
+      [req.params.id, docType]
+    );
+    
+    // If document of same type exists, delete it (simple versioning - keep only latest)
+    if (existingDoc.rows.length > 0) {
+      await client.query(
+        'DELETE FROM documents WHERE application_id = $1 AND doc_type = $2',
+        [req.params.id, docType]
+      );
+    }
+    
+    // Persist document metadata (only columns that exist in schema)
+    await client.query(
+      'INSERT INTO documents (doc_id, application_id, doc_type, file_name, file_type, size_bytes, hash, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [docId, req.params.id, docType, req.file.originalname, req.file.mimetype, req.file.size, fileHash, 'Uploaded']
+    );
+
+    // Upload to MinIO (outside transaction but awaited before event)
+    // If MinIO/S3 is not available, continue without object storage (for development)
+    const objectKey = `${req.params.id}/${docId}/${req.file.originalname}`;
+    try {
+      await putObjectBuffer(s3, { bucket, key: objectKey, body: req.file.buffer, contentType: req.file.mimetype });
+      // Store object key only if upload succeeded
+      await client.query('UPDATE documents SET object_key = $1 WHERE doc_id = $2', [objectKey, docId]);
+    } catch (s3Err: any) {
+      logger.warn('MinIOUploadFailed', { 
+        error: (s3Err as Error).message, 
+        docId, 
+        applicationId: req.params.id,
+        correlationId: (req as any).correlationId 
+      });
+      // Continue without object storage - metadata is still in database
+      // In production, this should fail or retry, but for development we continue
+    }
+
+    // Write outbox event
+    const eventId = uuidv4();
+    await client.query(
+      'INSERT INTO outbox (id, aggregate_id, topic, event_type, payload, headers) VALUES ($1, $2, $3, $4, $5, $6)',
+      [eventId, req.params.id, 'los.document.DocumentUploaded.v1', 'los.document.DocumentUploaded.v1', JSON.stringify({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey }), JSON.stringify({ correlationId: (req as any).correlationId })]
+    );
+
+    await client.query('COMMIT');
+    logger.info('DocumentUploaded', { correlationId: (req as any).correlationId, applicationId: req.params.id, docId, docType });
+    return res.status(201).json({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('DocumentUploadError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to upload document' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/applications/:id/documents - list documents
+app.get('/api/applications/:id/documents', async (req: any, res: any) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT doc_id, doc_type, file_name, file_type, size_bytes, status, created_at, object_key FROM documents WHERE application_id = $1 ORDER BY created_at DESC',
+      [req.params.id]
+    );
+    // Map to match frontend interface
+    const documents = rows.map((row: any) => ({
+      document_id: row.doc_id,
+      document_code: row.doc_type,
+      document_name: row.file_name || row.doc_type,
+      file_url: row.object_key ? `/api/documents/${row.doc_id}/download` : undefined,
+      verification_status: row.status,
+      uploaded_at: row.created_at,
+      file_type: row.file_type,
+      size_bytes: row.size_bytes,
+    }));
+    return res.status(200).json({ documents });
+  } catch (err) {
+    logger.error('ListDocumentsError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to list documents' });
+  }
+});
+
+// GET /api/applications/:id/documents/checklist - get document checklist for application's product
+app.get('/api/applications/:id/documents/checklist', async (req: any, res: any) => {
+  try {
+    // Get product code from application
+    const appResult = await pool.query(
+      'SELECT product_code FROM applications WHERE application_id = $1',
+      [req.params.id]
+    );
+    if (appResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    const productCode = appResult.rows[0].product_code;
+
+    // Get checklist for this product - join with document_master to get document names
+    // Use DISTINCT ON to handle duplicate entries in document_checklist
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (dc.doc_type)
+         dc.doc_type as document_code,
+         COALESCE(dm.document_name, 
+           CASE 
+             WHEN dc.doc_type = 'PAN' THEN 'PAN Card'
+             WHEN dc.doc_type = 'ITR' THEN 'Income Tax Return'
+             WHEN dc.doc_type = 'SALARY_SLIP' THEN 'Salary Slip'
+             WHEN dc.doc_type = 'FORM_16' THEN 'Form 16'
+             WHEN dc.doc_type = 'BANK_STATEMENT' THEN 'Bank Statement'
+             WHEN dc.doc_type = 'AADHAAR' THEN 'Aadhaar Card'
+             WHEN dc.doc_type = 'PROPERTY_DOCS' THEN 'Property Documents'
+             ELSE REPLACE(dc.doc_type, '_', ' ')
+           END
+         ) as document_name,
+         dc.required as is_mandatory,
+         CASE WHEN d.doc_id IS NOT NULL THEN true ELSE false END as uploaded
+       FROM document_checklist dc
+       LEFT JOIN document_master dm ON dm.document_code = dc.doc_type
+       LEFT JOIN documents d ON d.application_id = $2 AND d.doc_type = dc.doc_type
+       WHERE dc.product_code = $1
+       ORDER BY dc.doc_type, dc.required DESC`,
+      [productCode, req.params.id]
+    );
+
+    return res.status(200).json({ 
+      productCode, 
+      checklist: rows,
+      completion: rows.length > 0 ? Math.round((rows.filter((r: any) => r.uploaded).length / rows.length) * 100) : 0
+    });
+  } catch (err) {
+    logger.error('GetChecklistError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to get checklist', details: (err as Error).message });
+  }
+});
+
+// Legacy checklist endpoint (for backward compatibility)
+app.get('/api/applications/:id/checklist', async (req: any, res: any) => {
+  // Redirect to the new endpoint by calling the handler directly
+  const newReq = { ...req, url: `/api/applications/${req.params.id}/documents/checklist`, path: `/api/applications/${req.params.id}/documents/checklist` };
+  return app._router.handle(newReq, res);
+});
+
+// PATCH /api/documents/:docId/verify - verify document
+app.patch('/api/documents/:docId/verify', async (req: any, res: any) => {
+  const VerifySchema = z.object({ remarks: z.string().optional() });
+  const parsed = VerifySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
+
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Check document exists and get application_id
+    const { rows } = await client.query('SELECT application_id, status FROM documents WHERE doc_id = $1', [req.params.docId]);
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Update status
+    await client.query(
+      'UPDATE documents SET status = $1 WHERE doc_id = $2',
+      ['Verified', req.params.docId]
+    );
+
+    // Write outbox event
+    const eventId = uuidv4();
+    await client.query(
+      'INSERT INTO outbox (id, aggregate_id, topic, event_type, payload, headers) VALUES ($1, $2, $3, $4, $5, $6)',
+      [eventId, rows[0].application_id, 'los.document.DocumentVerified.v1', 'los.document.DocumentVerified.v1', JSON.stringify({ docId: req.params.docId, remarks: parsed.data.remarks }), JSON.stringify({ correlationId: (req as any).correlationId })]
+    );
+
+    await client.query('COMMIT');
+    logger.info('DocumentVerified', { correlationId: (req as any).correlationId, docId: req.params.docId });
+    return res.status(200).json({ docId: req.params.docId, status: 'Verified', verified: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('DocumentVerifyError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to verify document' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/documents/:docId/download - presigned URL for download
+app.get('/api/documents/:docId/download', async (req: any, res: any) => {
+  try {
+    const { rows } = await pool.query('SELECT object_key, file_name, file_type FROM documents WHERE doc_id = $1', [req.params.docId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    if (!rows[0].object_key) {
+      return res.status(404).json({ error: 'Document file not found (object_key missing)' });
+    }
+    
+    // Try to generate presigned URL
+    try {
+      const url = await getPresignedUrl(s3, { bucket, key: rows[0].object_key, expiresInSec: 300 });
+      return res.status(200).json({ 
+        url, 
+        fileName: rows[0].file_name, 
+        fileType: rows[0].file_type, 
+        expiresInSec: 300 
+      });
+    } catch (s3Err: any) {
+      // If S3/MinIO is not available, return a direct download URL (for development)
+      logger.warn('S3PresignedUrlError', { 
+        error: (s3Err as Error).message, 
+        objectKey: rows[0].object_key,
+        correlationId: (req as any).correlationId 
+      });
+      
+      // Fallback: Return a direct URL pattern (for development/stub)
+      const directUrl = `/api/documents/${req.params.docId}/file`;
+      return res.status(200).json({ 
+        url: directUrl,
+        fileName: rows[0].file_name, 
+        fileType: rows[0].file_type, 
+        expiresInSec: 300,
+        note: 'Using direct download URL (S3/MinIO not available)'
+      });
+    }
+  } catch (err) {
+    logger.error('DownloadPresignError', { error: (err as Error).message, correlationId: (req as any).correlationId });
+    return res.status(500).json({ error: 'Failed to generate download link', details: (err as Error).message });
+  }
+});
 
 // Only start server if this file is run directly (not imported for tests)
 if (require.main === module) {

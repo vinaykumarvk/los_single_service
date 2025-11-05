@@ -45,7 +45,7 @@ export const rmAPI = {
       apiClient.post(`/api/applications/${id}/submit`),
 
     submitForVerification: (id: string) =>
-      apiClient.post(`/api/applications/${id}/submit-for-verification`),
+      apiClient.post(`/api/applications/${id}/submit`), // Use /submit endpoint
 
     getCompleteness: (id: string) =>
       apiClient.get(`/api/applications/${id}/completeness`),

@@ -160,26 +160,36 @@ app.get('/api/integrations/ekyc/:sessionId/status', async (req, res) => {
 // Bureau pull endpoint (using adapter)
 app.post('/api/integrations/bureau/pull', async (req, res) => {
   try {
-    const { applicationId, applicantId, pan, mobile, dob, provider } = req.body || {};
+    // Support both formats: frontend sends pan/dateOfBirth/mobile, backend expects applicationId/applicantId
+    const { applicationId, applicantId, pan, mobile, dob, dateOfBirth, provider } = req.body || {};
     
-    if (!applicationId || !applicantId) {
-      return res.status(400).json({ error: 'applicationId and applicantId are required' });
+    // If frontend format (pan/dateOfBirth/mobile), use those
+    // If backend format (applicationId/applicantId), use those
+    if (!pan && !applicationId) {
+      return res.status(400).json({ error: 'Either (pan, dateOfBirth, mobile) or (applicationId, applicantId) is required' });
     }
+    
+    // For frontend format, create dummy applicationId/applicantId if not provided
+    const finalApplicationId = applicationId || `APP_${Date.now()}`;
+    const finalApplicantId = applicantId || `APP_${Date.now()}`;
+    const finalPan = pan;
+    const finalDob = dob || dateOfBirth;
+    const finalMobile = mobile;
     
     const adapter = createBureauAdapter(provider || 'CIBIL');
     const result = await adapter.pullCreditReport({
-      applicationId,
-      applicantId,
-      pan,
-      mobile,
-      dob,
+      applicationId: finalApplicationId,
+      applicantId: finalApplicantId,
+      pan: finalPan,
+      mobile: finalMobile,
+      dob: finalDob,
       provider: provider || 'CIBIL'
     });
     
     logger.info('BureauPull', { 
       correlationId: (req as any).correlationId, 
       requestId: result.requestId,
-      applicationId,
+      applicationId: finalApplicationId,
       provider: result.provider 
     });
     
@@ -224,7 +234,8 @@ app.get('/api/integrations/bureau/:requestId/report', async (req, res) => {
 // Penny drop endpoint (stub - returns success)
 app.post('/api/integrations/bank/penny-drop', async (req, res) => {
   try {
-    const { accountNumber, ifsc, amount } = req.body || {};
+    // Support both formats: frontend may send accountHolderName too
+    const { accountNumber, ifsc, amount, accountHolderName } = req.body || {};
     
     if (!accountNumber || !ifsc) {
       return res.status(400).json({ error: 'accountNumber and ifsc are required' });

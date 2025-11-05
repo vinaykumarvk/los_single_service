@@ -58,7 +58,17 @@ export default function RMApplicationReview() {
 
       // Load application data
       const appResponse = await rmAPI.applications.get(id);
-      const applicantResponse = await rmAPI.applicants.get(id);
+      const application = appResponse.data || appResponse; // Handle both {data: {...}} and direct response
+      
+      // Load applicant data via applicant endpoint
+      let applicant: any = null;
+      try {
+        const applicantResponse = await rmAPI.applicants.get(id);
+        applicant = applicantResponse.data || applicantResponse;
+      } catch (err) {
+        console.warn('Failed to get applicant data:', err);
+        // Continue with null applicant - will show default values
+      }
       
       // Load completeness
       const completenessResponse = await rmAPI.applications.getCompleteness(id);
@@ -69,10 +79,6 @@ export default function RMApplicationReview() {
       const documentsChecklist = documentsResponse.data?.checklist || [];
       const documentsComplete =
         documentsChecklist.filter((item: any) => item.is_mandatory && !item.uploaded).length === 0;
-
-      // Build summary
-      const applicant = applicantResponse.data;
-      const application = appResponse.data;
 
       const appSummary: ApplicationSummary = {
         applicationId: id,

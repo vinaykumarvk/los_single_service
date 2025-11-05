@@ -160,13 +160,38 @@ app.get('/api/applications/:id/checklist', async (req, res) => {
     }
     const productCode = appResult.rows[0].product_code;
 
-    // Get checklist for this product
+    // Get checklist for this product - join with document_master to get document names
+    // Use DISTINCT ON to handle duplicate entries in document_checklist
     const { rows } = await pool.query(
-      'SELECT doc_type, required FROM document_checklist WHERE product_code = $1 ORDER BY doc_type',
-      [productCode]
+      `SELECT DISTINCT ON (dc.doc_type)
+         dc.doc_type as document_code,
+         COALESCE(dm.document_name, 
+           CASE 
+             WHEN dc.doc_type = 'PAN' THEN 'PAN Card'
+             WHEN dc.doc_type = 'ITR' THEN 'Income Tax Return'
+             WHEN dc.doc_type = 'SALARY_SLIP' THEN 'Salary Slip'
+             WHEN dc.doc_type = 'FORM_16' THEN 'Form 16'
+             WHEN dc.doc_type = 'BANK_STATEMENT' THEN 'Bank Statement'
+             WHEN dc.doc_type = 'AADHAAR' THEN 'Aadhaar Card'
+             WHEN dc.doc_type = 'PROPERTY_DOCS' THEN 'Property Documents'
+             ELSE REPLACE(dc.doc_type, '_', ' ')
+           END
+         ) as document_name,
+         dc.required as is_mandatory,
+         CASE WHEN d.doc_id IS NOT NULL THEN true ELSE false END as uploaded
+       FROM document_checklist dc
+       LEFT JOIN document_master dm ON dm.document_code = dc.doc_type
+       LEFT JOIN documents d ON d.application_id = $2 AND d.doc_type = dc.doc_type
+       WHERE dc.product_code = $1
+       ORDER BY dc.doc_type, dc.required DESC`,
+      [productCode, req.params.id]
     );
 
-    return res.status(200).json({ productCode, checklist: rows });
+    return res.status(200).json({ 
+      productCode, 
+      checklist: rows,
+      completion: rows.length > 0 ? Math.round((rows.filter((r: any) => r.uploaded).length / rows.length) * 100) : 0
+    });
   } catch (err) {
     logger.error('GetChecklistError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to get checklist' });
