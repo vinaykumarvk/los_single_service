@@ -128,12 +128,15 @@ services:
       PORT: 3001
       DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
       KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
+      MASTERS_SERVICE_URL: ${MASTERS_SERVICE_URL:-http://masters:3004}
     ports:
       - "${APPLICATION_PORT:-3001}:3001"
     depends_on:
       postgres:
         condition: service_healthy
       redpanda:
+        condition: service_healthy
+      masters:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
@@ -556,5 +559,4 @@ volumes:
 networks:
   los-network:
     driver: bridge
-
 

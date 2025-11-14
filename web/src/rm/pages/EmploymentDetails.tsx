@@ -18,7 +18,7 @@ import { ArrowLeft, ArrowRight, Save, Briefcase, DollarSign, CheckCircle2, Alert
 import ApplicationStepWrapper from '../components/ApplicationStepWrapper';
 
 const employmentSchema = z.object({
-  employmentType: z.enum(['Salaried', 'Self-employed'], { 
+  employmentType: z.enum(['Salaried', 'Self-employed', 'Business', 'SelfEmployed'], { 
     required_error: 'Employment type is required',
     invalid_type_error: 'Please select an employment type'
   }),
@@ -49,7 +49,7 @@ const employmentSchema = z.object({
     .max(500, 'Other income sources description must not exceed 500 characters')
     .optional(),
 }).refine((data) => {
-  if (data.employmentType === 'Salaried') {
+  if (data.employmentType === 'Salaried' || data.employmentType === 'Business') {
     return !!data.employerName;
   }
   return true;
@@ -117,8 +117,21 @@ export default function RMEmploymentDetails() {
       if (applicant) {
         console.log('EmploymentDetails: Setting form values for applicant:', applicant);
         
+        // Map database employment types to form values
+        const mapEmploymentType = (dbType: string | null | undefined): string => {
+          if (!dbType) return '';
+          // Map database values to form values
+          const mapping: Record<string, string> = {
+            'Salaried': 'Salaried',
+            'SelfEmployed': 'SelfEmployed',
+            'Self-employed': 'Self-employed',
+            'Business': 'Business',
+          };
+          return mapping[dbType] || dbType;
+        };
+        
         const fields = {
-          employmentType: applicant.employment_type as any,
+          employmentType: mapEmploymentType(applicant.employment_type) as any,
           employerName: applicant.employer_name || '',
           businessName: applicant.business_name || '',
           monthlyIncome: applicant.monthly_income?.toString() || '',
@@ -168,8 +181,19 @@ export default function RMEmploymentDetails() {
 
     try {
       setLoading(true);
+      // Map form employment type back to database format
+      const mapToDbEmploymentType = (formType: string): string => {
+        const mapping: Record<string, string> = {
+          'Salaried': 'Salaried',
+          'Self-employed': 'SelfEmployed',
+          'SelfEmployed': 'SelfEmployed',
+          'Business': 'Business',
+        };
+        return mapping[formType] || formType;
+      };
+      
       await rmAPI.applicants.update(id, {
-        employmentType: data.employmentType,
+        employmentType: mapToDbEmploymentType(data.employmentType),
         employerName: data.employerName,
         businessName: data.businessName,
         monthlyIncome: parseFloat(data.monthlyIncome),
@@ -282,6 +306,8 @@ export default function RMEmploymentDetails() {
                 <option value="">Select Employment Type</option>
                 <option value="Salaried">Salaried</option>
                 <option value="Self-employed">Self-employed</option>
+                <option value="SelfEmployed">Self Employed</option>
+                <option value="Business">Business</option>
               </select>
               {errors.employmentType && (
                 <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
@@ -291,7 +317,7 @@ export default function RMEmploymentDetails() {
               )}
             </div>
 
-            {employmentType === 'Salaried' && (
+            {(employmentType === 'Salaried' || employmentType === 'Business') && (
               <div>
                 <Input
                   label="Employer/Organization Name *"
@@ -303,7 +329,7 @@ export default function RMEmploymentDetails() {
               </div>
             )}
 
-            {employmentType === 'Self-employed' && (
+            {(employmentType === 'Self-employed' || employmentType === 'SelfEmployed') && (
               <div>
                 <Input
                   label="Business Name"

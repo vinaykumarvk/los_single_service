@@ -64,9 +64,21 @@ export default function RMApplicationReview() {
       let applicant: any = null;
       try {
         const applicantResponse = await rmAPI.applicants.get(id);
-        applicant = applicantResponse.data || applicantResponse;
+        console.log('ApplicationReview: Applicant API response:', applicantResponse);
+        
+        // Handle axios response structure
+        if (applicantResponse?.data?.data && typeof applicantResponse.data.data === 'object') {
+          applicant = applicantResponse.data.data;
+          console.log('ApplicationReview: ✅ Found applicant in response.data.data');
+        } else if (applicantResponse?.data && typeof applicantResponse.data === 'object' && 'first_name' in applicantResponse.data) {
+          applicant = applicantResponse.data;
+          console.log('ApplicationReview: ✅ Found applicant in response.data');
+        } else {
+          applicant = applicantResponse;
+          console.log('ApplicationReview: Using applicantResponse directly');
+        }
       } catch (err) {
-        console.warn('Failed to get applicant data:', err);
+        console.warn('ApplicationReview: Failed to get applicant data:', err);
         // Continue with null applicant - will show default values
       }
       
@@ -75,10 +87,41 @@ export default function RMApplicationReview() {
       const completeness = completenessResponse.data?.completeness || 0;
 
       // Load documents checklist
-      const documentsResponse = await rmAPI.documents.getChecklist(id);
-      const documentsChecklist = documentsResponse.data?.checklist || [];
-      const documentsComplete =
-        documentsChecklist.filter((item: any) => item.is_mandatory && !item.uploaded).length === 0;
+      let documentsComplete = false;
+      try {
+        const documentsResponse = await rmAPI.documents.getChecklist(id);
+        console.log('ApplicationReview: Documents checklist response:', documentsResponse);
+        
+        // Handle axios response structure
+        let checklist = [];
+        if (documentsResponse?.data?.checklist) {
+          checklist = documentsResponse.data.checklist;
+          console.log('ApplicationReview: ✅ Found checklist in response.data.checklist');
+        } else if (documentsResponse?.data && Array.isArray(documentsResponse.data)) {
+          checklist = documentsResponse.data;
+          console.log('ApplicationReview: ✅ Found checklist as array in response.data');
+        } else if (Array.isArray(documentsResponse)) {
+          checklist = documentsResponse;
+          console.log('ApplicationReview: ✅ Found checklist as direct array');
+        }
+        
+        const mandatoryMissing = checklist.filter((item: any) => item.is_mandatory && !item.uploaded);
+        documentsComplete = mandatoryMissing.length === 0;
+        
+        console.log('ApplicationReview: Documents complete check:', {
+          totalMandatory: checklist.filter((item: any) => item.is_mandatory).length,
+          mandatoryUploaded: checklist.filter((item: any) => item.is_mandatory && item.uploaded).length,
+          mandatoryMissing: mandatoryMissing.length,
+          documentsComplete
+        });
+        
+        if (mandatoryMissing.length > 0) {
+          console.warn('ApplicationReview: Missing mandatory documents:', mandatoryMissing.map((item: any) => item.document_name));
+        }
+      } catch (err) {
+        console.error('ApplicationReview: Failed to load documents checklist:', err);
+        documentsComplete = false;
+      }
 
       const appSummary: ApplicationSummary = {
         applicationId: id,

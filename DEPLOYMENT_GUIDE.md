@@ -42,6 +42,9 @@ export REDIS_URL=redis://redis-host:6379
 
 # Run migrations
 # (Connect to DB and run migrations from each service)
+
+# Sanity-check required microservices
+./scripts/verify-service-artifacts.sh
 ```
 
 #### 2. Frontend Deployment (All Personas)
@@ -354,4 +357,3 @@ See `RM_API_CONTRACT.md` for complete API specification.
 - Check API keys are set (or fallback is enabled)
 - Verify integration service endpoints
 - Check firewall rules
-

@@ -313,7 +313,7 @@ const UpdateApplicationSchema = z.object({
 async function validateProductLimits(productCode: string, requestedAmount: number, requestedTenureMonths: number): Promise<{ valid: boolean; error?: string }> {
   try {
     // Fetch product details from masters service
-    const mastersUrl = process.env.MASTERS_SERVICE_URL || 'http://localhost:3005';
+    const mastersUrl = process.env.MASTERS_SERVICE_URL || 'http://localhost:3004';
     // CRITICAL: Add timeout to prevent hanging - this was causing the 30s timeout!
     const timeoutMs = 2000; // 2 second timeout
     const controller = new AbortController();
@@ -784,6 +784,212 @@ app.get('/api/applications/:id/applicant', async (req: any, res: any) => {
       correlationId: (req as any).correlationId
     });
     return res.status(500).json({ error: 'Failed to fetch applicant data' });
+  }
+});
+
+// PUT /api/applications/:id/applicant - update applicant data via application ID
+app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
+  try {
+    const applicationId = req.params.id;
+    
+    // Get applicant_id from application
+    const { rows: appRows } = await pool.query(
+      'SELECT applicant_id FROM applications WHERE application_id = $1',
+      [applicationId]
+    );
+    
+    if (appRows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    const applicantId = appRows[0].applicant_id;
+    
+    // Parse request body - support partial updates
+    const updateData: any = {};
+    
+    if (req.body.firstName !== undefined) updateData.firstName = req.body.firstName;
+    if (req.body.lastName !== undefined) updateData.lastName = req.body.lastName;
+    if (req.body.dateOfBirth !== undefined) updateData.dateOfBirth = req.body.dateOfBirth;
+    if (req.body.gender !== undefined) updateData.gender = req.body.gender;
+    if (req.body.maritalStatus !== undefined) updateData.maritalStatus = req.body.maritalStatus;
+    if (req.body.mobile !== undefined) updateData.mobile = req.body.mobile;
+    if (req.body.email !== undefined) updateData.email = req.body.email;
+    if (req.body.pan !== undefined) updateData.pan = req.body.pan;
+    if (req.body.addressLine1 !== undefined) updateData.addressLine1 = req.body.addressLine1;
+    if (req.body.addressLine2 !== undefined) updateData.addressLine2 = req.body.addressLine2;
+    if (req.body.city !== undefined) updateData.city = req.body.city;
+    if (req.body.state !== undefined) updateData.state = req.body.state;
+    if (req.body.pincode !== undefined) updateData.pincode = req.body.pincode;
+    if (req.body.employmentType !== undefined) updateData.employmentType = req.body.employmentType;
+    if (req.body.monthlyIncome !== undefined) updateData.monthlyIncome = req.body.monthlyIncome;
+    if (req.body.employerName !== undefined) updateData.employerName = req.body.employerName;
+    if (req.body.businessName !== undefined) updateData.businessName = req.body.businessName;
+    if (req.body.yearsInJob !== undefined) updateData.yearsInJob = req.body.yearsInJob;
+    if (req.body.otherIncomeSources !== undefined) updateData.otherIncomeSources = req.body.otherIncomeSources;
+    if (req.body.bankAccountNumber !== undefined) updateData.bankAccountNumber = req.body.bankAccountNumber;
+    if (req.body.bankIfsc !== undefined) updateData.bankIfsc = req.body.bankIfsc;
+    if (req.body.accountHolderName !== undefined) updateData.accountHolderName = req.body.accountHolderName;
+    if (req.body.bankName !== undefined) updateData.bankName = req.body.bankName;
+    if (req.body.bankVerified !== undefined) updateData.bankVerified = req.body.bankVerified;
+    if (req.body.bankVerificationMethod !== undefined) updateData.bankVerificationMethod = req.body.bankVerificationMethod;
+    
+    // Validate using ApplicantSchema (allows partial updates)
+    const parsed = ApplicantSchema.partial().safeParse(updateData);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Build dynamic UPDATE query
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+      
+      if (parsed.data.firstName !== undefined) {
+        updates.push(`first_name = $${paramCount++}`);
+        values.push(parsed.data.firstName);
+      }
+      if (parsed.data.lastName !== undefined) {
+        updates.push(`last_name = $${paramCount++}`);
+        values.push(parsed.data.lastName);
+      }
+      if (parsed.data.dateOfBirth !== undefined) {
+        updates.push(`date_of_birth = $${paramCount++}`);
+        values.push(parsed.data.dateOfBirth);
+      }
+      if (parsed.data.gender !== undefined) {
+        updates.push(`gender = $${paramCount++}`);
+        values.push(parsed.data.gender);
+      }
+      if (parsed.data.maritalStatus !== undefined) {
+        updates.push(`marital_status = $${paramCount++}`);
+        values.push(parsed.data.maritalStatus);
+      }
+      if (parsed.data.mobile !== undefined) {
+        updates.push(`mobile = $${paramCount++}`);
+        values.push(parsed.data.mobile);
+      }
+      if (parsed.data.email !== undefined) {
+        updates.push(`email = $${paramCount++}`);
+        values.push(parsed.data.email);
+      }
+      if (parsed.data.pan !== undefined) {
+        updates.push(`pan = $${paramCount++}`);
+        values.push(parsed.data.pan);
+      }
+      if (parsed.data.addressLine1 !== undefined) {
+        updates.push(`address_line1 = $${paramCount++}`);
+        values.push(parsed.data.addressLine1);
+      }
+      if (parsed.data.addressLine2 !== undefined) {
+        updates.push(`address_line2 = $${paramCount++}`);
+        values.push(parsed.data.addressLine2);
+      }
+      if (parsed.data.city !== undefined) {
+        updates.push(`city = $${paramCount++}`);
+        values.push(parsed.data.city);
+      }
+      if (parsed.data.state !== undefined) {
+        updates.push(`state = $${paramCount++}`);
+        values.push(parsed.data.state);
+      }
+      if (parsed.data.pincode !== undefined) {
+        updates.push(`pincode = $${paramCount++}`);
+        values.push(parsed.data.pincode);
+      }
+      if (parsed.data.employmentType !== undefined) {
+        updates.push(`employment_type = $${paramCount++}`);
+        values.push(parsed.data.employmentType);
+      }
+      if (parsed.data.monthlyIncome !== undefined) {
+        updates.push(`monthly_income = $${paramCount++}`);
+        values.push(parsed.data.monthlyIncome);
+      }
+      if (parsed.data.employerName !== undefined) {
+        updates.push(`employer_name = $${paramCount++}`);
+        values.push(parsed.data.employerName);
+      }
+      if (parsed.data.businessName !== undefined) {
+        updates.push(`business_name = $${paramCount++}`);
+        values.push(parsed.data.businessName);
+      }
+      if (parsed.data.yearsInJob !== undefined) {
+        updates.push(`years_in_job = $${paramCount++}`);
+        values.push(parsed.data.yearsInJob);
+      }
+      if (parsed.data.otherIncomeSources !== undefined) {
+        updates.push(`other_income_sources = $${paramCount++}`);
+        values.push(parsed.data.otherIncomeSources);
+      }
+      if (req.body.bankAccountNumber !== undefined) {
+        updates.push(`bank_account_number = $${paramCount++}`);
+        values.push(req.body.bankAccountNumber);
+      }
+      if (req.body.bankIfsc !== undefined) {
+        updates.push(`bank_ifsc = $${paramCount++}`);
+        values.push(req.body.bankIfsc);
+      }
+      if (req.body.accountHolderName !== undefined) {
+        updates.push(`bank_account_holder_name = $${paramCount++}`);
+        values.push(req.body.accountHolderName);
+      }
+      if (req.body.bankName !== undefined) {
+        updates.push(`bank_name = $${paramCount++}`);
+        values.push(req.body.bankName);
+      }
+      if (req.body.bankVerified !== undefined) {
+        updates.push(`bank_verified = $${paramCount++}`);
+        values.push(req.body.bankVerified);
+      }
+      if (req.body.bankVerificationMethod !== undefined) {
+        updates.push(`bank_verification_method = $${paramCount++}`);
+        values.push(req.body.bankVerificationMethod);
+      }
+      
+      if (updates.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+      
+      updates.push(`updated_at = now()`);
+      values.push(applicantId);
+      
+      await client.query(
+        `UPDATE applicants SET ${updates.join(', ')} WHERE applicant_id = $${paramCount++}`,
+        values
+      );
+      
+      await client.query('COMMIT');
+      
+      logger.debug('UpdateApplicantByApplication', {
+        applicationId,
+        applicantId,
+        updatedFields: updates.length - 1,
+        correlationId: (req as any).correlationId
+      });
+      
+      return res.status(200).json({ applicationId, applicantId, updated: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('UpdateApplicantByApplicationError', {
+        error: (err as Error).message,
+        applicationId,
+        correlationId: (req as any).correlationId
+      });
+      return res.status(500).json({ error: 'Failed to update applicant' });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    logger.error('UpdateApplicantByApplicationError', {
+      error: (err as Error).message,
+      applicationId: req.params.id,
+      correlationId: (req as any).correlationId
+    });
+    return res.status(500).json({ error: 'Failed to update applicant' });
   }
 });
 

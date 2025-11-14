@@ -14,6 +14,27 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+export MASTERS_SERVICE_URL=${MASTERS_SERVICE_URL:-http://localhost:3004}
+
+wait_for_service() {
+    local name=$1
+    local url=$2
+    local retries=${3:-30}
+    local delay=${4:-2}
+
+    echo -e "${YELLOW}⏳ Waiting for ${name} at ${url}...${NC}"
+    for ((attempt=1; attempt<=retries; attempt++)); do
+        if curl -sSf "$url" > /dev/null 2>&1; then
+            echo -e "${GREEN}✅ ${name} is ready${NC}"
+            return 0
+        fi
+        sleep "$delay"
+    done
+
+    echo -e "${YELLOW}❌ ${name} did not become ready in time${NC}"
+    return 1
+}
+
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
     echo "❌ Docker is not running. Please start Docker and try again."
@@ -57,10 +78,6 @@ cd services/auth && pnpm dev > ../../logs/auth.log 2>&1 &
 AUTH_PID=$!
 cd ../..
 
-cd services/application && pnpm dev > ../../logs/application.log 2>&1 &
-APP_PID=$!
-cd ../..
-
 cd services/customer-kyc && pnpm dev > ../../logs/kyc.log 2>&1 &
 KYC_PID=$!
 cd ../..
@@ -71,6 +88,12 @@ cd ../..
 
 cd services/masters && pnpm dev > ../../logs/masters.log 2>&1 &
 MASTERS_PID=$!
+cd ../..
+
+wait_for_service "Masters Service" "http://localhost:3004/health" 30 2
+
+cd services/application && MASTERS_SERVICE_URL=$MASTERS_SERVICE_URL pnpm dev > ../../logs/application.log 2>&1 &
+APP_PID=$!
 cd ../..
 
 cd services/underwriting && pnpm dev > ../../logs/underwriting.log 2>&1 &
@@ -162,4 +185,3 @@ echo ""
 # Save PIDs for stop script
 mkdir -p .runtime
 echo "$GATEWAY_PID $AUTH_PID $APP_PID $KYC_PID $DOC_PID $MASTERS_PID $UNDERWRITING_PID $SCORING_PID $ANALYTICS_PID $SANCTION_PID $PAYMENTS_PID $DISBURSEMENT_PID $ORCHESTRATOR_PID $INTEGRATION_PID $BUREAU_PID $VERIFICATION_PID $NOTIFICATIONS_PID $AUDIT_PID $REPORTING_PID" > .runtime/pids.txt
-

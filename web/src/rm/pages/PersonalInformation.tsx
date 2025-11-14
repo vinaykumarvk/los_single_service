@@ -158,10 +158,11 @@ export default function RMPersonalInformation() {
           dateOfBirth: applicant.date_of_birth ? (() => {
             const date = new Date(applicant.date_of_birth);
             if (!isNaN(date.getTime())) {
-              const day = String(date.getDate()).padStart(2, '0');
-              const month = String(date.getMonth() + 1).padStart(2, '0');
+              // Format as YYYY-MM-DD for HTML date input
               const year = date.getFullYear();
-              return `${day}/${month}/${year}`;
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
             }
             return '';
           })() : '',
