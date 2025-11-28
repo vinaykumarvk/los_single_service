@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY shared/ ./shared/
 COPY services/monolith/ ./services/monolith/
+COPY web/ ./web/
 
 # Install pnpm and dependencies
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
@@ -17,6 +18,10 @@ RUN pnpm build
 
 # Build monolith
 WORKDIR /app/services/monolith
+RUN pnpm build
+
+# Build frontend web app
+WORKDIR /app/web
 RUN pnpm build
 
 # Production image
@@ -40,6 +45,7 @@ RUN pnpm install --no-frozen-lockfile --prod
 # Now copy the built artifacts
 COPY --from=builder /app/shared/libs/dist ./shared/libs/dist
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
+COPY --from=builder /app/web/dist ./services/web-dist
 
 WORKDIR /app/services/monolith
 

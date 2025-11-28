@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import path from 'path';
 import { createSupabaseClient, querySupabase, connectSupabase, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler, createS3Client, putObjectBuffer, getPresignedUrl, SupabaseClient } from '@los/shared-libs';
 
 import { setupApplicationSSE, broadcastApplicationUpdate } from './sse-handler';
@@ -135,6 +136,10 @@ app.get('/', (_req, res) => {
 
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 app.get('/metrics', metricsHandler);
+
+// Serve static frontend files (if available)
+const frontendPath = path.join(__dirname, '../../web-dist');
+app.use(express.static(frontendPath));
 
 // ============================================
 // AUTHENTICATION ENDPOINTS (Consolidated)
@@ -1797,6 +1802,26 @@ app.get('/api/masters/calendar/holidays', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch holidays' });
   }
+});
+
+// Catch-all route for SPA - serve index.html for any non-API routes
+// This must be LAST, after all API routes
+app.get('*', (req, res) => {
+  const frontendIndexPath = path.join(__dirname, '../../web-dist/index.html');
+  res.sendFile(frontendIndexPath, (err) => {
+    if (err) {
+      // Frontend not available - this is API-only deployment
+      res.status(404).json({ 
+        error: 'Page not found',
+        message: 'This is an API service. Frontend UI is not deployed.',
+        availableEndpoints: {
+          root: '/ - API info',
+          health: '/health - Health check',
+          api: '/api/* - API endpoints'
+        }
+      });
+    }
+  });
 });
 
 // Only start server if this file is run directly (not imported for tests)
