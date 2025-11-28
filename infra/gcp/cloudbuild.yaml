@@ -43,19 +43,16 @@ steps:
       - '--min-instances=1'
       - '--allow-unauthenticated'
       - '--service-account=los-cloud-run@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--add-cloudsql-instances=${PROJECT_ID}:${_GCP_REGION}:${_CLOUD_SQL_INSTANCE}'
-      - '--set-env-vars=NODE_ENV=production,PORT=3000,USE_GCP_SECRETS=true,GCP_PROJECT_ID=${PROJECT_ID}'
-      - '--set-secrets=DATABASE_URL=projects/${PROJECT_ID}/secrets/${_DATABASE_SECRET_NAME}/versions/latest,KAFKA_BROKERS=projects/${PROJECT_ID}/secrets/${_KAFKA_SECRET_NAME}/versions/latest,KEYCLOAK_CONFIG=projects/${PROJECT_ID}/secrets/${_KEYCLOAK_SECRET_NAME}/versions/latest'
+      - '--set-env-vars=NODE_ENV=production,PORT=3000'
+      - '--set-secrets=DATABASE_URL=projects/${PROJECT_ID}/secrets/${_DATABASE_SECRET_NAME}/versions/latest,SUPABASE_SERVICE_ROLE_KEY=projects/${PROJECT_ID}/secrets/${_SUPABASE_SECRET_NAME}/versions/latest'
     waitFor: ['push-monolith-sha', 'push-monolith-latest']
 
 substitutions:
   _GCP_REGION: 'us-central1'
   _ARTIFACT_REGISTRY: 'los-images'
   _SERVICE_NAME: 'los-monolith'
-  _CLOUD_SQL_INSTANCE: 'los-db'
   _DATABASE_SECRET_NAME: 'database-url'
-  _KAFKA_SECRET_NAME: 'kafka-brokers'
-  _KEYCLOAK_SECRET_NAME: 'keycloak-config'
+  _SUPABASE_SECRET_NAME: 'supabase-service-role-key'
 
 options:
   logging: CLOUD_LOGGING_ONLY
