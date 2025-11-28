@@ -32,18 +32,17 @@ WORKDIR /app
 # Copy workspace configuration
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Copy shared libs source (needed for workspace link resolution)
-COPY shared/libs/package.json ./shared/libs/package.json
+# Copy entire shared libs directory structure
+COPY --from=builder /app/shared ./shared
 
-# Copy monolith package.json
-COPY services/monolith/package.json ./services/monolith/package.json
+# Copy monolith source (package.json needed for pnpm)
+COPY --from=builder /app/services/monolith/package.json ./services/monolith/package.json
 
 # Install production dependencies (this creates workspace links)
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 RUN pnpm install --no-frozen-lockfile --prod
 
-# Now copy the built artifacts
-COPY --from=builder /app/shared/libs/dist ./shared/libs/dist
+# Copy built artifacts
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
 COPY --from=builder /app/web/dist ./services/web-dist
 
