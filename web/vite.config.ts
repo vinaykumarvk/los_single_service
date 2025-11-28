@@ -70,7 +70,6 @@ export default defineConfig({
   build: {
     outDir: buildConfig.outDir,
     rollupOptions: {
-      input: buildConfig.entry,
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
