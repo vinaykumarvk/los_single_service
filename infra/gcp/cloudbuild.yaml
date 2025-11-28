@@ -44,7 +44,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=los-cloud-run@${PROJECT_ID}.iam.gserviceaccount.com'
       - '--add-cloudsql-instances=${PROJECT_ID}:${_GCP_REGION}:${_CLOUD_SQL_INSTANCE}'
-      - '--set-env-vars=NODE_ENV=production,PORT=3000,USE_GCP_SECRETS=true,GCP_PROJECT_ID=${PROJECT_ID}'
+      - '--set-env-vars=NODE_ENV=development,PORT=3000,USE_GCP_SECRETS=true,GCP_PROJECT_ID=${PROJECT_ID}'
       - '--set-secrets=DATABASE_URL=projects/${PROJECT_ID}/secrets/${_DATABASE_SECRET_NAME}/versions/latest,KAFKA_BROKERS=projects/${PROJECT_ID}/secrets/${_KAFKA_SECRET_NAME}/versions/latest,KEYCLOAK_CONFIG=projects/${PROJECT_ID}/secrets/${_KEYCLOAK_SECRET_NAME}/versions/latest'
     waitFor: ['push-monolith-sha', 'push-monolith-latest']
 
