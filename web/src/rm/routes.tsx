@@ -3,8 +3,10 @@
  * Routes specific to Relationship Managers
  */
 
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { RMayout } from './components/RMLayout';
+import { useAuth } from '../shared/hooks/useAuth';
+import Login from '../pages/Login';
 
 // Import RM Pages
 import RMDashboard from './pages/Dashboard';
@@ -21,10 +23,31 @@ import ApplicationStatus from './pages/ApplicationStatus';
 import ApplicationDetail from './pages/ApplicationDetail';
 
 export function RMRoutes() {
-  // Simplified routing - using relative paths (parent route is /rm/*)
+  const { user, loading } = useAuth();
+  
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show login if not authenticated
+  if (!user) {
+    return <Login />;
+  }
+  // User is authenticated - show RM routes
   return (
     <RMayout>
       <Routes>
+        {/* Login route */}
+        <Route path="login" element={<Login />} />
+        
         {/* Dashboard - root of /rm */}
         <Route path="" element={<RMDashboard />} />
         

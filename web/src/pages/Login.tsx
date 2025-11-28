@@ -18,7 +18,7 @@ import PasswordStrength from '../components/ui/PasswordStrength';
 export default function Login() {
   const navigate = useNavigate();
   const [rememberMe, setRememberMe] = useState(false);
-  const { login, loading, isAuthenticated } = useAuth();
+  const { login, loading, isAuthenticated, user } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,7 +26,8 @@ export default function Login() {
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
 
   useEffect(() => {
-    if (isAuthenticated) {
+    // Only redirect if truly authenticated with a valid user object
+    if (isAuthenticated && user) {
       navigate('/');
     }
     
@@ -39,7 +40,7 @@ export default function Login() {
         setRememberMe(true);
       }
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user, navigate]);
 
   // Real-time validation - relaxed for RM usernames like "rm1"
   const validateField = (field: 'username' | 'password', value: string) => {
