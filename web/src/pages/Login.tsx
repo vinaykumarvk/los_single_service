@@ -59,8 +59,8 @@ export default function Login() {
     if (field === 'password') {
       if (!value) {
         errors.password = 'Password is required';
-      } else if (value.length < 3) {
-        errors.password = 'Password must be at least 3 characters';
+      } else if (value.length < 6) {
+        errors.password = 'Password must be at least 6 characters';
       }
       // If valid, no error
     }
