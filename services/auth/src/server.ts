@@ -4,17 +4,25 @@ import { json } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { createPgPool, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler } from '@los/shared-libs';
+import { createSupabaseClient, querySupabase, connectSupabase, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler, SupabaseClient } from '@los/shared-libs';
 import cors from 'cors';
 import { setupAuthFeatures } from './auth-features';
 
-// Ensure DATABASE_URL is set before creating pool
+// Ensure DATABASE_URL is set before creating client
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'postgres://los:los@localhost:5432/los';
   console.warn('⚠️  DATABASE_URL not set, using default: postgres://los:los@localhost:5432/los');
 }
 
-export const pool = createPgPool();
+let supabaseClient: SupabaseClient;
+try {
+  supabaseClient = createSupabaseClient();
+  console.log('✅ Supabase SDK client initialized - all database operations will use Supabase SDK');
+} catch (error) {
+  console.error('❌ Failed to initialize Supabase client:', (error as Error).message);
+  throw error;
+}
+export { supabaseClient };
 const logger = createLogger('auth-service');
 
 export const app = express();
@@ -48,7 +56,7 @@ const RefreshTokenSchema = z.object({
 // Initialize users table if it doesn't exist
 async function ensureUsersTable() {
   try {
-    await pool.query(`
+    await querySupabase(supabaseClient, `
       CREATE TABLE IF NOT EXISTS users (
         user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         username TEXT UNIQUE NOT NULL,
@@ -65,7 +73,7 @@ async function ensureUsersTable() {
     `);
     
     // Create refresh_tokens table
-    await pool.query(`
+    await querySupabase(supabaseClient, `
       CREATE TABLE IF NOT EXISTS refresh_tokens (
         token_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -78,10 +86,10 @@ async function ensureUsersTable() {
     `);
     
     // Create a default admin user if none exists (password: admin123)
-    const { rows: existingUsers } = await pool.query('SELECT user_id FROM users WHERE username = $1', ['admin']);
+    const { rows: existingUsers } = await querySupabase(supabaseClient, 'SELECT user_id FROM users WHERE username = $1', ['admin']);
     if (existingUsers.length === 0) {
       const hashedPassword = await bcrypt.hash('admin123', 10);
-      await pool.query(
+      await querySupabase(supabaseClient, 
         'INSERT INTO users (username, email, password_hash, roles) VALUES ($1, $2, $3, $4)',
         ['admin', 'admin@los.local', hashedPassword, ['admin', 'maker', 'checker']]
       );
@@ -122,7 +130,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Find user by username
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT user_id, username, email, password_hash, roles, is_active FROM users WHERE username = $1',
       [username]
     );
@@ -175,7 +183,7 @@ app.post('/api/auth/login', async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
-    await pool.query(
+    await querySupabase(supabaseClient, 
       'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
       [user.user_id, refreshTokenHash, expiresAt]
     );
@@ -184,7 +192,7 @@ app.post('/api/auth/login', async (req, res) => {
     await authHelpers.resetFailedAttempts(user.user_id);
 
     // Update last login
-    await pool.query(
+    await querySupabase(supabaseClient, 
       'UPDATE users SET last_login = now(), updated_at = now() WHERE user_id = $1',
       [user.user_id]
     );
@@ -235,7 +243,7 @@ app.post('/api/auth/refresh', async (req, res) => {
     const userId = decoded.sub;
 
     // Check if refresh token exists in database
-    const { rows: tokenRows } = await pool.query(
+    const { rows: tokenRows } = await querySupabase(supabaseClient, 
       'SELECT token_id, token_hash, expires_at FROM refresh_tokens WHERE user_id = $1 AND expires_at > now() ORDER BY created_at DESC',
       [userId]
     );
@@ -255,7 +263,7 @@ app.post('/api/auth/refresh', async (req, res) => {
     }
 
     // Get user details
-    const { rows: userRows } = await pool.query(
+    const { rows: userRows } = await querySupabase(supabaseClient, 
       'SELECT user_id, username, email, roles, is_active FROM users WHERE user_id = $1',
       [userId]
     );
@@ -306,7 +314,7 @@ app.post('/api/auth/logout', async (req, res) => {
     const userId = decoded.sub;
 
     // Delete all refresh tokens for this user
-    await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+    await querySupabase(supabaseClient, 'DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
 
     logger.info('LogoutSuccess', { userId });
     return res.status(200).json({ message: 'Logged out successfully' });

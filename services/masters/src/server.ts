@@ -1,19 +1,26 @@
 import express, { Request, Response } from 'express';
 import { json } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { createPgPool } from '@los/shared-libs';
+import { createSupabaseClient, querySupabase, connectSupabase, SupabaseClient } from '@los/shared-libs';
 
 const app = express();
 app.use(json());
 
-const pool = createPgPool();
+let supabaseClient: SupabaseClient;
+try {
+  supabaseClient = createSupabaseClient();
+  console.log('✅ Supabase SDK client initialized - all database operations will use Supabase SDK');
+} catch (error) {
+  console.error('❌ Failed to initialize Supabase client:', (error as Error).message);
+  throw error;
+}
 
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 
 // GET /api/masters/products - list all products
 app.get('/api/masters/products', async (_req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT product_code, name, min_amount, max_amount, min_tenure_months, max_tenure_months, max_foir, age_at_maturity_limit, created_at FROM products ORDER BY product_code'
     );
     return res.status(200).json(rows);
@@ -25,7 +32,7 @@ app.get('/api/masters/products', async (_req, res) => {
 // GET /api/masters/products/:productCode - get product by code
 app.get('/api/masters/products/:productCode', async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT product_code, name, min_amount, max_amount, min_tenure_months, max_tenure_months, max_foir, age_at_maturity_limit, created_at FROM products WHERE product_code = $1',
       [req.params.productCode]
     );
@@ -47,7 +54,7 @@ app.post('/api/masters/calendar/holidays', async (req: Request, res: Response) =
     }
     
     const holidayId = uuidv4();
-    await pool.query(
+    await querySupabase(supabaseClient, 
       'INSERT INTO business_calendar (holiday_id, holiday_date, holiday_name, holiday_type, applicable_states) VALUES ($1, $2, $3, $4, $5)',
       [holidayId, holidayDate, holidayName, holidayType, applicableStates ? JSON.stringify(applicableStates) : null]
     );
@@ -88,7 +95,7 @@ app.get('/api/masters/calendar/is-business-day', async (req, res) => {
       holidayQuery += ` AND (applicable_states IS NULL OR holiday_type = 'NATIONAL' OR holiday_type = 'BANK')`;
     }
     
-    const { rows: holidays } = await pool.query(holidayQuery, queryParams);
+    const { rows: holidays } = await querySupabase(supabaseClient, holidayQuery, queryParams);
     const isHoliday = holidays.length > 0;
     
     const isBusinessDay = !isWeekend && !isHoliday;
@@ -126,7 +133,7 @@ app.get('/api/masters/calendar/holidays', async (req, res) => {
     
     query += ` ORDER BY holiday_date ASC`;
     
-    const { rows } = await pool.query(query, queryParams);
+    const { rows } = await querySupabase(supabaseClient, query, queryParams);
     return res.status(200).json({ holidays: rows, year });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch holidays' });
@@ -196,7 +203,7 @@ app.post('/api/masters/rates', async (req: Request, res: Response) => {
     }
     
     const rateMatrixId = uuidv4();
-    await pool.query(
+    await querySupabase(supabaseClient, 
       `INSERT INTO rate_matrices (
         rate_matrix_id, product_code, rate_type, interest_rate, effective_from, effective_until,
         min_amount, max_amount, min_tenure_months, max_tenure_months, applicable_channels, applicable_states
@@ -243,7 +250,7 @@ app.get('/api/masters/rates', async (req: Request, res: Response) => {
     
     query += ' ORDER BY effective_from DESC';
     
-    const { rows } = await pool.query(query, params);
+    const { rows } = await querySupabase(supabaseClient, query, params);
     return res.status(200).json(rows);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch rates' });
@@ -262,7 +269,7 @@ app.post('/api/masters/charges', async (req: Request, res: Response) => {
     }
     
     const chargeId = uuidv4();
-    await pool.query(
+    await querySupabase(supabaseClient, 
       `INSERT INTO charges (
         charge_id, charge_code, charge_name, charge_type, calculation_method,
         fixed_amount, percentage_rate, min_charge, max_charge,
@@ -310,7 +317,7 @@ app.get('/api/masters/charges', async (req: Request, res: Response) => {
       params.push(channel);
     }
     
-    const { rows } = await pool.query(query, params);
+    const { rows } = await querySupabase(supabaseClient, query, params);
     return res.status(200).json(rows);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch charges' });
@@ -329,7 +336,7 @@ app.post('/api/masters/documents', async (req: Request, res: Response) => {
     }
     
     const documentId = uuidv4();
-    await pool.query(
+    await querySupabase(supabaseClient, 
       `INSERT INTO document_master (
         document_id, document_code, document_name, document_category, is_mandatory,
         validity_period_days, applicable_products, applicable_channels, metadata
@@ -374,7 +381,7 @@ app.get('/api/masters/documents', async (req: Request, res: Response) => {
       params.push(channel);
     }
     
-    const { rows } = await pool.query(query, params);
+    const { rows } = await querySupabase(supabaseClient, query, params);
     return res.status(200).json(rows);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch documents' });
@@ -393,7 +400,7 @@ app.post('/api/masters/branches', async (req: Request, res: Response) => {
     }
     
     const branchId = uuidv4();
-    await pool.query(
+    await querySupabase(supabaseClient, 
       `INSERT INTO branches (
         branch_id, branch_code, branch_name, branch_type, address_line1, address_line2,
         city, state, pincode, contact_mobile, contact_email, manager_name, metadata
@@ -436,7 +443,7 @@ app.get('/api/masters/branches', async (req: Request, res: Response) => {
       params.push(state);
     }
     
-    const { rows } = await pool.query(query, params);
+    const { rows } = await querySupabase(supabaseClient, query, params);
     return res.status(200).json(rows);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch branches' });
@@ -455,7 +462,7 @@ app.post('/api/masters/roles', async (req: Request, res: Response) => {
     }
     
     const roleId = uuidv4();
-    await pool.query(
+    await querySupabase(supabaseClient, 
       'INSERT INTO roles_master (role_id, role_code, role_name, role_category, permissions) VALUES ($1, $2, $3, $4, $5)',
       [roleId, roleCode, roleName, roleCategory, permissions ? JSON.stringify(permissions) : '[]']
     );
@@ -482,7 +489,7 @@ app.get('/api/masters/roles', async (req: Request, res: Response) => {
       params.push(category);
     }
     
-    const { rows } = await pool.query(query, params);
+    const { rows } = await querySupabase(supabaseClient, query, params);
     return res.status(200).json(rows);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch roles' });
@@ -503,31 +510,32 @@ app.post('/api/masters/rules', async (req: Request, res: Response) => {
     const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
     const ruleId = uuidv4();
     
-    await pool.query('BEGIN');
+    const client = await connectSupabase(supabaseClient);
     
-    await pool.query(
-      `INSERT INTO rule_store (
-        rule_id, rule_code, rule_name, rule_category, rule_expression,
-        effective_from, effective_until, created_by, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        ruleId, ruleCode, ruleName, ruleCategory, ruleExpression,
-        effectiveFrom || null, effectiveUntil || null, actorId,
-        metadata ? JSON.stringify(metadata) : '{}'
-      ]
-    );
-    
-    // Record history
-    await pool.query(
-      'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by) VALUES ($1, 1, $2, $3, $4, $5)',
-      [ruleId, ruleExpression, 'Draft', 'Created', actorId]
-    );
-    
-    await pool.query('COMMIT');
-    
-    return res.status(201).json({ ruleId, ruleCode, ruleName, approvalStatus: 'Draft' });
-  } catch (err: any) {
-    await pool.query('ROLLBACK');
+    try {
+      await client.query(
+        `INSERT INTO rule_store (
+          rule_id, rule_code, rule_name, rule_category, rule_expression,
+          effective_from, effective_until, created_by, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          ruleId, ruleCode, ruleName, ruleCategory, ruleExpression,
+          effectiveFrom || null, effectiveUntil || null, actorId,
+          metadata ? JSON.stringify(metadata) : '{}'
+        ]
+      );
+      
+      // Record history
+      await client.query(
+        'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by) VALUES ($1, 1, $2, $3, $4, $5)',
+        [ruleId, ruleExpression, 'Draft', 'Created', actorId]
+      );
+      
+      await client.commit();
+      
+      return res.status(201).json({ ruleId, ruleCode, ruleName, approvalStatus: 'Draft' });
+    } catch (err: any) {
+      await client.rollback();
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Rule code already exists' });
     }
@@ -540,7 +548,7 @@ app.patch('/api/masters/rules/:ruleId/submit', async (req: Request, res: Respons
   try {
     const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
     
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT approval_status FROM rule_store WHERE rule_id = $1',
       [req.params.ruleId]
     );
@@ -553,23 +561,24 @@ app.patch('/api/masters/rules/:ruleId/submit', async (req: Request, res: Respons
       return res.status(400).json({ error: `Rule must be in Draft status to submit. Current status: ${rows[0].approval_status}` });
     }
     
-    await pool.query('BEGIN');
+    const client = await connectSupabase(supabaseClient);
     
-    await pool.query(
-      'UPDATE rule_store SET approval_status = $1, updated_at = now() WHERE rule_id = $2',
-      ['PendingApproval', req.params.ruleId]
-    );
-    
-    await pool.query(
-      'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by) SELECT rule_id, rule_version, rule_expression, $1, $2, $3 FROM rule_store WHERE rule_id = $4',
-      ['PendingApproval', 'Submitted', actorId, req.params.ruleId]
-    );
-    
-    await pool.query('COMMIT');
-    
-    return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'PendingApproval' });
-  } catch (err) {
-    await pool.query('ROLLBACK');
+    try {
+      await client.query(
+        'UPDATE rule_store SET approval_status = $1, updated_at = now() WHERE rule_id = $2',
+        ['PendingApproval', req.params.ruleId]
+      );
+      
+      await client.query(
+        'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by) SELECT rule_id, rule_version, rule_expression, $1, $2, $3 FROM rule_store WHERE rule_id = $4',
+        ['PendingApproval', 'Submitted', actorId, req.params.ruleId]
+      );
+      
+      await client.commit();
+      
+      return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'PendingApproval' });
+    } catch (err) {
+      await client.rollback();
     return res.status(500).json({ error: 'Failed to submit rule' });
   }
 });
@@ -579,7 +588,7 @@ app.patch('/api/masters/rules/:ruleId/approve', async (req: Request, res: Respon
   try {
     const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
     
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT approval_status, rule_expression, rule_version FROM rule_store WHERE rule_id = $1',
       [req.params.ruleId]
     );
@@ -592,23 +601,24 @@ app.patch('/api/masters/rules/:ruleId/approve', async (req: Request, res: Respon
       return res.status(400).json({ error: `Rule must be in PendingApproval status. Current status: ${rows[0].approval_status}` });
     }
     
-    await pool.query('BEGIN');
+    const client = await connectSupabase(supabaseClient);
     
-    await pool.query(
-      'UPDATE rule_store SET approval_status = $1, approved_by = $2, approved_at = now(), is_active = true, updated_at = now() WHERE rule_id = $3',
-      ['Approved', actorId, req.params.ruleId]
-    );
-    
-    await pool.query(
-      'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by) VALUES ($1, $2, $3, $4, $5, $6)',
-      [req.params.ruleId, rows[0].rule_version, rows[0].rule_expression, 'Approved', 'Approved', actorId]
-    );
-    
-    await pool.query('COMMIT');
-    
-    return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'Approved', isActive: true });
-  } catch (err) {
-    await pool.query('ROLLBACK');
+    try {
+      await client.query(
+        'UPDATE rule_store SET approval_status = $1, approved_by = $2, approved_at = now(), is_active = true, updated_at = now() WHERE rule_id = $3',
+        ['Approved', actorId, req.params.ruleId]
+      );
+      
+      await client.query(
+        'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by) VALUES ($1, $2, $3, $4, $5, $6)',
+        [req.params.ruleId, rows[0].rule_version, rows[0].rule_expression, 'Approved', 'Approved', actorId]
+      );
+      
+      await client.commit();
+      
+      return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'Approved', isActive: true });
+    } catch (err) {
+      await client.rollback();
     return res.status(500).json({ error: 'Failed to approve rule' });
   }
 });
@@ -619,7 +629,7 @@ app.patch('/api/masters/rules/:ruleId/reject', async (req: Request, res: Respons
     const { rejectionReason } = req.body || {};
     const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
     
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT approval_status, rule_expression, rule_version FROM rule_store WHERE rule_id = $1',
       [req.params.ruleId]
     );
@@ -632,23 +642,24 @@ app.patch('/api/masters/rules/:ruleId/reject', async (req: Request, res: Respons
       return res.status(400).json({ error: `Rule cannot be rejected in ${rows[0].approval_status} status` });
     }
     
-    await pool.query('BEGIN');
+    const client = await connectSupabase(supabaseClient);
     
-    await pool.query(
-      'UPDATE rule_store SET approval_status = $1, rejected_by = $2, rejected_at = now(), rejection_reason = $3, is_active = false, updated_at = now() WHERE rule_id = $4',
-      ['Rejected', actorId, rejectionReason || null, req.params.ruleId]
-    );
-    
-    await pool.query(
-      'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [req.params.ruleId, rows[0].rule_version, rows[0].rule_expression, 'Rejected', 'Rejected', actorId, rejectionReason || null]
-    );
-    
-    await pool.query('COMMIT');
-    
-    return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'Rejected' });
-  } catch (err) {
-    await pool.query('ROLLBACK');
+    try {
+      await client.query(
+        'UPDATE rule_store SET approval_status = $1, rejected_by = $2, rejected_at = now(), rejection_reason = $3, is_active = false, updated_at = now() WHERE rule_id = $4',
+        ['Rejected', actorId, rejectionReason || null, req.params.ruleId]
+      );
+      
+      await client.query(
+        'INSERT INTO rule_store_history (rule_id, rule_version, rule_expression, approval_status, action, action_by, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [req.params.ruleId, rows[0].rule_version, rows[0].rule_expression, 'Rejected', 'Rejected', actorId, rejectionReason || null]
+      );
+      
+      await client.commit();
+      
+      return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'Rejected' });
+    } catch (err) {
+      await client.rollback();
     return res.status(500).json({ error: 'Failed to reject rule' });
   }
 });
@@ -677,7 +688,7 @@ app.get('/api/masters/rules', async (req: Request, res: Response) => {
     
     query += ' ORDER BY created_at DESC';
     
-    const { rows } = await pool.query(query, params);
+    const { rows } = await querySupabase(supabaseClient, query, params);
     return res.status(200).json(rows);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch rules' });

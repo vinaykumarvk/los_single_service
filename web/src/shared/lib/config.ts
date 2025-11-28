@@ -97,10 +97,10 @@ export function getConfig(): AppConfig {
       loginEndpoint:
         runtimeConfig?.auth?.jwt?.loginEndpoint ||
         import.meta.env.VITE_AUTH_SERVICE_URL ||
-        'http://localhost:3016/api/auth/login', // Direct to auth service, bypassing gateway
+        '/api/auth/login', // Use relative path to go through Vite proxy
       refreshEndpoint:
         runtimeConfig?.auth?.jwt?.refreshEndpoint ||
-        'http://localhost:3016/api/auth/refresh', // Direct to auth service, bypassing gateway
+        '/api/auth/refresh', // Use relative path to go through Vite proxy
       storageKey: runtimeConfig?.auth?.jwt?.storageKey || import.meta.env.VITE_JWT_STORAGE_KEY || 'los_token',
     },
     oauth2: {

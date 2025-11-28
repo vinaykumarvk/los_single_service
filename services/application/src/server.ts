@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { createPgPool, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler, createS3Client, putObjectBuffer, getPresignedUrl } from '@los/shared-libs';
+import { createSupabaseClient, querySupabase, connectSupabase, correlationIdMiddleware, createLogger, metricsMiddleware, metricsHandler, createS3Client, putObjectBuffer, getPresignedUrl, SupabaseClient } from '@los/shared-libs';
 
 import { setupApplicationSSE, broadcastApplicationUpdate } from './sse-handler';
 import { setupRMDashboardEndpoint } from './rm-dashboard';
@@ -16,13 +16,21 @@ import { setupHierarchicalDashboards } from './hierarchical-dashboards';
 import { setupPropertyEndpoints } from './property-endpoints';
 import { extractDocumentMetadata } from './ocr';
 
-// Export pool and app for testing
-// Ensure DATABASE_URL is set before creating pool
+// Export supabaseClient and app for testing
+// Ensure DATABASE_URL is set before creating client
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'postgres://los:los@localhost:5432/los';
   console.warn('⚠️  DATABASE_URL not set, using default: postgres://los:los@localhost:5432/los');
 }
-export const pool = createPgPool();
+let supabaseClient: SupabaseClient;
+try {
+  supabaseClient = createSupabaseClient();
+  console.log('✅ Supabase SDK client initialized - all database operations will use Supabase SDK');
+} catch (error) {
+  console.error('❌ Failed to initialize Supabase client:', (error as Error).message);
+  throw error;
+}
+export { supabaseClient };
 const logger = createLogger('rm-service'); // Consolidated RM service
 
 export const app = express();
@@ -61,7 +69,7 @@ async function recordHistory(
   try {
     const historyId = uuidv4();
     const userId = actorId || 'system';
-    await pool.query(
+    await querySupabase(supabaseClient, 
       `INSERT INTO application_history 
        (history_id, application_id, event_type, event_source, event_data, actor_id)
        VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -83,7 +91,7 @@ app.get('/metrics', metricsHandler);
 // Initialize users table
 async function ensureUsersTable() {
   try {
-    await pool.query(`
+    await querySupabase(supabaseClient, `
       CREATE TABLE IF NOT EXISTS users (
         user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         username TEXT UNIQUE NOT NULL,
@@ -99,7 +107,7 @@ async function ensureUsersTable() {
       );
       CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
     `);
-    await pool.query(`
+    await querySupabase(supabaseClient, `
       CREATE TABLE IF NOT EXISTS refresh_tokens (
         token_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -121,7 +129,7 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 15;
 
 async function checkLoginLockout(username: string) {
-  const { rows } = await pool.query(
+  const { rows } = await querySupabase(supabaseClient, 
     'SELECT failed_login_attempts, locked_until FROM users WHERE username = $1',
     [username]
   );
@@ -134,7 +142,7 @@ async function checkLoginLockout(username: string) {
 }
 
 async function incrementFailedAttempts(username: string) {
-  await pool.query(
+  await querySupabase(supabaseClient, 
     `UPDATE users SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1,
      locked_until = CASE WHEN COALESCE(failed_login_attempts, 0) + 1 >= $1 
      THEN NOW() + INTERVAL '${LOCKOUT_DURATION_MINUTES} minutes' ELSE locked_until END
@@ -144,7 +152,7 @@ async function incrementFailedAttempts(username: string) {
 }
 
 async function resetFailedAttempts(userId: string) {
-  await pool.query('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = $1', [userId]);
+  await querySupabase(supabaseClient, 'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = $1', [userId]);
 }
 
 const LoginSchema = z.object({ username: z.string().min(1), password: z.string().min(1) });
@@ -156,7 +164,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { username, password } = parsed.data;
     const lockoutCheck = await checkLoginLockout(username);
     if (lockoutCheck.locked) return res.status(403).json({ error: 'Account locked' });
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT user_id, username, email, password_hash, roles, is_active FROM users WHERE username = $1',
       [username]
     );
@@ -172,9 +180,9 @@ app.post('/api/auth/login', async (req, res) => {
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
-    await pool.query('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', [user.user_id, refreshTokenHash, expiresAt]);
+    await querySupabase(supabaseClient, 'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', [user.user_id, refreshTokenHash, expiresAt]);
     await resetFailedAttempts(user.user_id);
-    await pool.query('UPDATE users SET last_login = now() WHERE user_id = $1', [user.user_id]);
+    await querySupabase(supabaseClient, 'UPDATE users SET last_login = now() WHERE user_id = $1', [user.user_id]);
     return res.status(200).json({ accessToken, refreshToken, tokenType: 'Bearer', expiresIn: 900, user: { id: user.user_id, username: user.username, email: user.email, roles: user.roles || [] } });
   } catch (err) {
     logger.error('LoginError', { error: (err as Error).message });
@@ -189,7 +197,7 @@ app.post('/api/auth/refresh', async (req, res) => {
   try {
     const decoded = jwt.verify(parsed.data.refreshToken, JWT_REFRESH_SECRET) as any;
     if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Invalid refresh token' });
-    const { rows } = await pool.query('SELECT user_id, username, email, roles, is_active FROM users WHERE user_id = $1', [decoded.sub]);
+    const { rows } = await querySupabase(supabaseClient, 'SELECT user_id, username, email, roles, is_active FROM users WHERE user_id = $1', [decoded.sub]);
     if (rows.length === 0 || !rows[0].is_active) return res.status(401).json({ error: 'User not found or inactive' });
     const user = rows[0];
     const accessToken = jwt.sign({ sub: user.user_id, username: user.username, email: user.email, roles: user.roles || [] }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -207,7 +215,7 @@ app.get('/api/applicants/:id', async (req, res) => {
   try {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(req.params.id)) return res.status(400).json({ error: 'Invalid UUID format' });
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       `SELECT applicant_id, first_name, middle_name, last_name, date_of_birth, date_of_birth as dob, gender, 
        marital_status, mobile, email, pan, address_line1, address_line2, city, state, pincode, country,
        employment_type, monthly_income, employer_name, other_income_sources, years_in_job,
@@ -248,9 +256,9 @@ const ApplicantSchema = z.object({
 app.put('/api/applicants/:id', async (req, res) => {
   const parsed = ApplicantSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     await client.query(
       `INSERT INTO applicants (applicant_id, first_name, last_name, date_of_birth, gender, marital_status, 
        mobile, email, pan, address_line1, city, state, pincode, country, employment_type, monthly_income, 
@@ -279,14 +287,14 @@ app.put('/api/applicants/:id', async (req, res) => {
        parsed.data.city, parsed.data.state, parsed.data.pincode, 'India', parsed.data.employmentType,
        parsed.data.monthlyIncome, parsed.data.employerName, parsed.data.yearsInJob]
     );
-    await client.query('COMMIT');
+    await client.commit();
     return res.status(200).json({ applicantId: req.params.id, updated: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('UpsertApplicantError', { error: (err as Error).message });
     return res.status(500).json({ error: 'Failed to upsert applicant' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
@@ -384,10 +392,10 @@ app.post('/api/applications', async (req, res) => {
     return res.status(400).json({ error: validation.error });
   }
 
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Generate application ID in format: ProductCode + SerialNumber (e.g., HL00001, PL00042)
     const idResult = await client.query(
@@ -426,7 +434,7 @@ app.post('/api/applications', async (req, res) => {
       [eventId, id, 'los.application.ApplicationCreated.v1', 'los.application.ApplicationCreated.v1', JSON.stringify({ applicationId: id, ...parsed.data }), JSON.stringify({ correlationId: (req as any).correlationId })]
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     
     // Record history (non-blocking)
     const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
@@ -435,11 +443,24 @@ app.post('/api/applications', async (req, res) => {
     logger.info('CreateApplication', { correlationId: (req as any).correlationId, applicationId: id });
     return res.status(201).json({ applicationId: id, status: 'Draft' });
   } catch (err) {
-    await client.query('ROLLBACK');
-    logger.error('CreateApplicationError', { error: (err as Error).message, correlationId: (req as any).correlationId });
-    return res.status(500).json({ error: 'Failed to create application' });
+    await client.rollback();
+    const error = err as Error;
+    // Log full error details including stack trace
+    logger.error('CreateApplicationError', { 
+      error: error.message, 
+      stack: error.stack,
+      name: error.name,
+      correlationId: (req as any).correlationId,
+      payload: parsed.success ? parsed.data : req.body
+    });
+    // Return detailed error in development, generic in production
+    const isDev = process.env.NODE_ENV !== 'production';
+    return res.status(500).json({ 
+      error: 'Failed to create application',
+      ...(isDev && { details: error.message, stack: error.stack })
+    });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
@@ -532,7 +553,7 @@ app.get('/api/applications', async (req, res) => {
     
     // Get total count
     const countQuery = `SELECT COUNT(*) as total FROM applications ${whereClause}`;
-    const countResult = await pool.query(countQuery, values);
+    const countResult = await querySupabase(supabaseClient, countQuery, values);
     const total = parseInt(countResult.rows[0].total, 10);
 
     // Get paginated results
@@ -547,7 +568,7 @@ app.get('/api/applications', async (req, res) => {
       ORDER BY created_at DESC
       LIMIT $${paramCount++} OFFSET $${paramCount++}
     `;
-    const { rows } = await pool.query(dataQuery, values);
+    const { rows } = await querySupabase(supabaseClient, dataQuery, values);
 
     logger.debug('ListApplications', { 
       correlationId: (req as any).correlationId, 
@@ -578,7 +599,7 @@ app.get('/api/applications/:id', async (req: any, res: any) => {
   try {
     const applicationId = req.params.id;
 
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       `SELECT 
         application_id,
         applicant_id,
@@ -623,10 +644,10 @@ app.put('/api/applications/:id', async (req: any, res: any) => {
     return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
   }
 
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Check application exists
     const { rows: appRows } = await client.query(
@@ -634,7 +655,7 @@ app.put('/api/applications/:id', async (req: any, res: any) => {
       [req.params.id]
     );
     if (appRows.length === 0) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       return res.status(404).json({ error: 'Application not found' });
     }
     
@@ -661,7 +682,7 @@ app.put('/api/applications/:id', async (req: any, res: any) => {
     }
     
     if (updates.length === 0) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       return res.status(400).json({ error: 'No fields to update' });
     }
     
@@ -673,25 +694,25 @@ app.put('/api/applications/:id', async (req: any, res: any) => {
       values
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     
     logger.info('UpdateApplication', { correlationId: (req as any).correlationId, applicationId: req.params.id });
     return res.status(200).json({ applicationId: req.params.id, updated: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('UpdateApplicationError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to update application' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
 // POST /api/applications/:id/submit - submit application for verification
 app.post('/api/applications/:id/submit', async (req: any, res: any) => {
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Check application exists and is in Draft status
     const { rows: appRows } = await client.query(
@@ -699,11 +720,11 @@ app.post('/api/applications/:id/submit', async (req: any, res: any) => {
       [req.params.id]
     );
     if (appRows.length === 0) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       return res.status(404).json({ error: 'Application not found' });
     }
     if (appRows[0].status !== 'Draft') {
-      await client.query('ROLLBACK');
+      await client.rollback();
       return res.status(400).json({ error: `Cannot submit application in ${appRows[0].status} status` });
     }
     
@@ -713,7 +734,7 @@ app.post('/api/applications/:id/submit', async (req: any, res: any) => {
       ['Submitted', req.params.id]
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     
     // Record history (non-blocking)
     const actorId = (req as any).user?.id || (req as any).user?.sub || 'system';
@@ -722,11 +743,11 @@ app.post('/api/applications/:id/submit', async (req: any, res: any) => {
     logger.info('SubmitApplication', { correlationId: (req as any).correlationId, applicationId: req.params.id });
     return res.status(200).json({ applicationId: req.params.id, status: 'Submitted' });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('SubmitApplicationError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to submit application' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
@@ -736,7 +757,7 @@ app.get('/api/applications/:id/applicant', async (req: any, res: any) => {
     const applicationId = req.params.id;
     
     // Get applicant_id from application
-    const { rows: appRows } = await pool.query(
+    const { rows: appRows } = await querySupabase(supabaseClient, 
       'SELECT applicant_id FROM applications WHERE application_id = $1',
       [applicationId]
     );
@@ -748,7 +769,7 @@ app.get('/api/applications/:id/applicant', async (req: any, res: any) => {
     const applicantId = appRows[0].applicant_id;
     
     // Get applicant data from applicants table (may not exist if only in KYC service)
-    const { rows: applicantRows } = await pool.query(
+    const { rows: applicantRows } = await querySupabase(supabaseClient, 
       `SELECT 
         applicant_id, first_name, last_name, date_of_birth, gender, marital_status,
         mobile, email, pan, address_line1, address_line2, city, state, pincode, country,
@@ -793,7 +814,7 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
     const applicationId = req.params.id;
     
     // Get applicant_id from application
-    const { rows: appRows } = await pool.query(
+    const { rows: appRows } = await querySupabase(supabaseClient, 
       'SELECT applicant_id FROM applications WHERE application_id = $1',
       [applicationId]
     );
@@ -839,9 +860,9 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
       return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
     }
     
-    const client = await pool.connect();
+    const client = await connectSupabase(supabaseClient);
     try {
-      await client.query('BEGIN');
+      // Transaction started;
       
       // Build dynamic UPDATE query
       const updates: string[] = [];
@@ -950,7 +971,7 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
       }
       
       if (updates.length === 0) {
-        await client.query('ROLLBACK');
+        await client.rollback();
         return res.status(400).json({ error: 'No fields to update' });
       }
       
@@ -962,7 +983,7 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
         values
       );
       
-      await client.query('COMMIT');
+      await client.commit();
       
       logger.debug('UpdateApplicantByApplication', {
         applicationId,
@@ -973,7 +994,7 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
       
       return res.status(200).json({ applicationId, applicantId, updated: true });
     } catch (err) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       logger.error('UpdateApplicantByApplicationError', {
         error: (err as Error).message,
         applicationId,
@@ -981,7 +1002,7 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
       });
       return res.status(500).json({ error: 'Failed to update applicant' });
     } finally {
-      client.release();
+      // Transaction handles cleanup automatically;
     }
   } catch (err) {
     logger.error('UpdateApplicantByApplicationError', {
@@ -999,7 +1020,7 @@ app.get('/api/applications/:id/completeness', async (req: any, res: any) => {
     const applicationId = req.params.id;
     
     // Get application data
-    const { rows: appRows } = await pool.query(
+    const { rows: appRows } = await querySupabase(supabaseClient, 
       'SELECT application_id, product_code, requested_amount, requested_tenure_months FROM applications WHERE application_id = $1',
       [applicationId]
     );
@@ -1011,7 +1032,7 @@ app.get('/api/applications/:id/completeness', async (req: any, res: any) => {
     const application = appRows[0];
     
     // Get applicant data
-    const { rows: applicantRows } = await pool.query(
+    const { rows: applicantRows } = await querySupabase(supabaseClient, 
       `SELECT applicant_id, first_name, last_name, mobile, address_line1, employment_type, monthly_income, bank_verified
        FROM applicants 
        WHERE applicant_id = (SELECT applicant_id FROM applications WHERE application_id = $1)`,
@@ -1021,14 +1042,14 @@ app.get('/api/applications/:id/completeness', async (req: any, res: any) => {
     const applicant = applicantRows[0] || {};
     
     // Get property data
-    const { rows: propertyRows } = await pool.query(
+    const { rows: propertyRows } = await querySupabase(supabaseClient, 
       'SELECT property_type FROM property_details WHERE application_id = $1',
       [applicationId]
     );
     const hasProperty = propertyRows.length > 0;
     
     // Get documents count
-    const { rows: docRows } = await pool.query(
+    const { rows: docRows } = await querySupabase(supabaseClient, 
       'SELECT COUNT(*) as count FROM documents WHERE application_id = $1',
       [applicationId]
     );
@@ -1094,13 +1115,13 @@ app.get('/api/applications/:id/events', (req, res) => {
 });
 
 // Setup RM Dashboard endpoint
-setupRMDashboardEndpoint(app, pool);
+setupRMDashboardEndpoint(app, null, supabaseClient);
 
 // Setup Hierarchical Dashboards (SRM and Regional Head)
-setupHierarchicalDashboards(app, pool);
+setupHierarchicalDashboards(app, supabaseClient);
 
 // Setup Property endpoints
-setupPropertyEndpoints(app, pool);
+setupPropertyEndpoints(app, supabaseClient);
 
 // ============================================
 // Document Upload & Management Endpoints
@@ -1124,10 +1145,10 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req: a
 
   const docId = uuidv4();
   const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Extract OCR metadata (non-blocking, but await for transaction)
     let extractedData = null;
@@ -1188,22 +1209,22 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req: a
       [eventId, req.params.id, 'los.document.DocumentUploaded.v1', 'los.document.DocumentUploaded.v1', JSON.stringify({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey }), JSON.stringify({ correlationId: (req as any).correlationId })]
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     logger.info('DocumentUploaded', { correlationId: (req as any).correlationId, applicationId: req.params.id, docId, docType });
     return res.status(201).json({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('DocumentUploadError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to upload document' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
 // GET /api/applications/:id/documents - list documents
 app.get('/api/applications/:id/documents', async (req: any, res: any) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT doc_id, doc_type, file_name, file_type, size_bytes, status, created_at, object_key FROM documents WHERE application_id = $1 ORDER BY created_at DESC',
       [req.params.id]
     );
@@ -1229,7 +1250,7 @@ app.get('/api/applications/:id/documents', async (req: any, res: any) => {
 app.get('/api/applications/:id/documents/checklist', async (req: any, res: any) => {
   try {
     // Get product code from application
-    const appResult = await pool.query(
+    const appResult = await querySupabase(supabaseClient, 
       'SELECT product_code FROM applications WHERE application_id = $1',
       [req.params.id]
     );
@@ -1240,7 +1261,7 @@ app.get('/api/applications/:id/documents/checklist', async (req: any, res: any) 
 
     // Get checklist for this product - join with document_master to get document names
     // Use DISTINCT ON to handle duplicate entries in document_checklist
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       `SELECT DISTINCT ON (dc.doc_type)
          dc.doc_type as document_code,
          COALESCE(dm.document_name, 
@@ -1289,15 +1310,15 @@ app.patch('/api/documents/:docId/verify', async (req: any, res: any) => {
   const parsed = VerifySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
 
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Check document exists and get application_id
     const { rows } = await client.query('SELECT application_id, status FROM documents WHERE doc_id = $1', [req.params.docId]);
     if (rows.length === 0) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       return res.status(404).json({ error: 'Document not found' });
     }
 
@@ -1314,22 +1335,22 @@ app.patch('/api/documents/:docId/verify', async (req: any, res: any) => {
       [eventId, rows[0].application_id, 'los.document.DocumentVerified.v1', 'los.document.DocumentVerified.v1', JSON.stringify({ docId: req.params.docId, remarks: parsed.data.remarks }), JSON.stringify({ correlationId: (req as any).correlationId })]
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     logger.info('DocumentVerified', { correlationId: (req as any).correlationId, docId: req.params.docId });
     return res.status(200).json({ docId: req.params.docId, status: 'Verified', verified: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('DocumentVerifyError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to verify document' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
 // GET /api/documents/:docId/download - presigned URL for download
 app.get('/api/documents/:docId/download', async (req: any, res: any) => {
   try {
-    const { rows } = await pool.query('SELECT object_key, file_name, file_type FROM documents WHERE doc_id = $1', [req.params.docId]);
+    const { rows } = await querySupabase(supabaseClient, 'SELECT object_key, file_name, file_type FROM documents WHERE doc_id = $1', [req.params.docId]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }

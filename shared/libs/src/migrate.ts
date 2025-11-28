@@ -10,7 +10,12 @@ async function run() {
     process.exit(1);
   }
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  // Handle SSL for Supabase and other cloud databases
+  const poolConfig: any = { connectionString: process.env.DATABASE_URL };
+  if (process.env.DATABASE_URL?.includes('supabase.co') || process.env.DATABASE_URL?.includes('sslmode=require')) {
+    poolConfig.ssl = { rejectUnauthorized: false };
+  }
+  const pool = new Pool(poolConfig);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

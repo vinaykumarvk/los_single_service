@@ -37,9 +37,9 @@ export default defineConfig({
     strictPort: false,
     allowedHosts: true,
     proxy: {
-      // Single RM Service - all endpoints consolidated to port 3001
+      // Monolith Service - all endpoints consolidated to port 3000
       '/api': {
-        target: 'http://localhost:3001', // Consolidated RM Service
+        target: 'http://localhost:3000', // Monolith Service
         changeOrigin: true,
         secure: false,
         timeout: 30000,

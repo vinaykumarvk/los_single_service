@@ -4,20 +4,19 @@
  */
 
 import crypto from 'crypto';
-import { Pool, PoolConfig } from 'pg';
+import { createSupabaseClient, querySupabase, SupabaseClient } from './supabase-client';
 import { createLogger } from './logger';
 
-// Direct implementation to avoid circular dependency with index.ts
-function createPgPoolForBlacklist(): Pool {
-  const connectionString = process.env.DATABASE_URL;
-  if (connectionString) {
-    return new Pool({ connectionString });
-  }
-  return new Pool();
+// Initialize Supabase client for blacklist operations
+let supabaseClient: SupabaseClient;
+try {
+  supabaseClient = createSupabaseClient();
+} catch (error) {
+  console.error('❌ Failed to initialize Supabase client for blacklist:', (error as Error).message);
+  throw error;
 }
 
 const logger = createLogger('blacklist-checker');
-const pool = createPgPoolForBlacklist();
 
 export interface BlacklistCheckResult {
   isBlacklisted: boolean;
@@ -38,7 +37,8 @@ export async function checkBlacklistWhitelist(
 ): Promise<BlacklistCheckResult> {
   try {
     // Check whitelist first (whitelist takes precedence)
-    const whitelistResult = await pool.query(
+    const whitelistResult = await querySupabase(
+      supabaseClient,
       `SELECT entry_id, reason, source, expires_at
        FROM whitelist
        WHERE entity_type = $1 AND entity_value = $2 AND is_active = true
@@ -60,7 +60,8 @@ export async function checkBlacklistWhitelist(
     }
     
     // Check blacklist
-    const blacklistResult = await pool.query(
+    const blacklistResult = await querySupabase(
+      supabaseClient,
       `SELECT entry_id, reason, source, expires_at
        FROM blacklist
        WHERE entity_type = $1 AND entity_value = $2 AND is_active = true
@@ -106,7 +107,8 @@ export async function addToBlacklist(
   expiresAt?: Date
 ): Promise<string> {
   const entryId = crypto.randomUUID();
-  await pool.query(
+  await querySupabase(
+    supabaseClient,
     `INSERT INTO blacklist (entry_id, entity_type, entity_value, reason, source, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (entity_type, entity_value) DO UPDATE SET
@@ -132,7 +134,8 @@ export async function addToWhitelist(
   expiresAt?: Date
 ): Promise<string> {
   const entryId = crypto.randomUUID();
-  await pool.query(
+  await querySupabase(
+    supabaseClient,
     `INSERT INTO whitelist (entry_id, entity_type, entity_value, reason, source, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (entity_type, entity_value) DO UPDATE SET

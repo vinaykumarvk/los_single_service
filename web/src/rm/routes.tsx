@@ -17,10 +17,8 @@ import RMDocumentUpload from './pages/DocumentUpload';
 import RMBankVerification from './pages/BankVerification';
 import RMCIBILCheck from './pages/CIBILCheck';
 import RMApplicationReview from './pages/ApplicationReview';
+import ApplicationStatus from './pages/ApplicationStatus';
 import ApplicationDetail from './pages/ApplicationDetail';
-
-// Placeholder pages (to be implemented)
-const RMApplicationStatus = () => <div>RM Application Status (Coming Soon)</div>;
 
 export function RMRoutes() {
   // Simplified routing - using relative paths (parent route is /rm/*)
@@ -44,7 +42,7 @@ export function RMRoutes() {
         <Route path="applications/:id/bank" element={<RMBankVerification />} />
         <Route path="applications/:id/cibil" element={<RMCIBILCheck />} />
         <Route path="applications/:id/review" element={<RMApplicationReview />} />
-        <Route path="applications/:id/status" element={<RMApplicationStatus />} />
+        <Route path="applications/:id/status" element={<ApplicationStatus />} />
         
         {/* Applications list - comes after all specific routes */}
         <Route path="applications" element={<RMApplicationsList />} />

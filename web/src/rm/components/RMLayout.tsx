@@ -10,6 +10,7 @@ import { Menu, X, LogOut, User, Home, FileText, Plus } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import ThemeToggle from '../../components/ThemeToggle';
 import BottomNav from '../../components/ui/BottomNav';
+import PersonaMenu from '../../components/PersonaMenu';
 
 interface RMayoutProps {
   children: ReactNode;
@@ -48,14 +49,19 @@ export function RMayout({ children }: RMayoutProps) {
               <div className="flex-shrink-0 flex items-center">
                 <Link 
                   to={`${basePath}/`} 
-                  className="flex items-center gap-2 group"
+                  className="flex items-center gap-3 group"
                 >
-                  <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg shadow-md group-hover:shadow-lg transition-shadow">
-                    <span className="text-white font-bold text-lg">RM</span>
+                  <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-md group-hover:shadow-lg transition-shadow">
+                    <span className="text-white font-bold text-lg tracking-tight">LOS</span>
                   </div>
-                  <span className="text-xl font-bold text-gray-900 dark:text-white hidden sm:block">
-                    RM Portal
-                  </span>
+                  <div className="hidden sm:flex flex-col">
+                    <span className="text-xl font-bold text-gray-900 dark:text-white leading-tight">
+                      LOS Portal
+                    </span>
+                    <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Unified Workspaces
+                    </span>
+                  </div>
                 </Link>
               </div>
 
@@ -172,7 +178,12 @@ export function RMayout({ children }: RMayoutProps) {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-20 md:pb-6 sm:pb-8">
-        {children}
+        <div className="flex flex-col lg:flex-row gap-6">
+          <PersonaMenu className="lg:w-72" />
+          <div className="flex-1">
+            {children}
+          </div>
+        </div>
       </main>
 
       {/* Bottom Navigation - Mobile Only */}

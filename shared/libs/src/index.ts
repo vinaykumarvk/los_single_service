@@ -1,11 +1,51 @@
 import { Pool, PoolConfig } from 'pg';
+import { createSupabaseClient, executeQuery, beginTransaction, executeRPC } from './supabase-client';
+import type { SupabaseClient, SupabaseQueryResult, SupabaseTransaction } from './supabase-client';
 
+// DEPRECATED: Use createSupabaseClient() instead
+// Kept for backward compatibility during migration
 export function createPgPool(configOrUrl?: string | PoolConfig): Pool {
+  console.warn('⚠️  createPgPool() is deprecated. Use createSupabaseClient() instead.');
+  let poolConfig: PoolConfig;
+  
   if (typeof configOrUrl === 'string' || !configOrUrl) {
-    return new Pool({ connectionString: (configOrUrl as string) || process.env.DATABASE_URL });
+    const connectionString = (configOrUrl as string) || process.env.DATABASE_URL;
+    poolConfig = { connectionString };
+  } else {
+    poolConfig = { ...configOrUrl };
   }
-  return new Pool(configOrUrl as PoolConfig);
+  
+  // Handle SSL for Supabase and other cloud databases
+  const connectionString = poolConfig.connectionString || process.env.DATABASE_URL || '';
+  if (connectionString.includes('supabase.co') || connectionString.includes('sslmode=require')) {
+    // Ensure SSL is properly configured - merge with existing SSL config if present
+    const existingSsl = typeof poolConfig.ssl === 'object' && poolConfig.ssl !== null ? poolConfig.ssl : {};
+    poolConfig.ssl = {
+      ...existingSsl,
+      rejectUnauthorized: false
+    } as any;
+    // Also ensure connection string has sslmode if it's a Supabase URL
+    if (connectionString.includes('supabase.co') && !connectionString.includes('sslmode=')) {
+      const separator = connectionString.includes('?') ? '&' : '?';
+      poolConfig.connectionString = `${connectionString}${separator}sslmode=require`;
+    }
+  }
+  
+  return new Pool(poolConfig);
 }
+
+// Export Supabase client functions
+export { 
+  createSupabaseClient, 
+  executeQuery, 
+  beginTransaction, 
+  executeRPC,
+  query,
+  querySupabase,
+  connect,
+  connectSupabase
+} from './supabase-client';
+export type { SupabaseClient, SupabaseQueryResult, SupabaseTransaction };
 
 export type OutboxEvent = {
   id: string;
@@ -16,7 +56,9 @@ export type OutboxEvent = {
   headers?: Record<string, string>;
 };
 
+// DEPRECATED: Use Supabase client version instead
 export async function writeOutboxEvent(pool: Pool, event: OutboxEvent): Promise<void> {
+  console.warn('⚠️  writeOutboxEvent(pool) is deprecated. Use writeOutboxEventSupabase() instead.');
   const query = `INSERT INTO outbox (id, aggregate_id, topic, event_type, payload, headers)
                  VALUES ($1, $2, $3, $4, $5, $6)`;
   await pool.query(query, [
@@ -27,6 +69,19 @@ export async function writeOutboxEvent(pool: Pool, event: OutboxEvent): Promise<
     JSON.stringify(event.payload),
     JSON.stringify(event.headers || {})
   ]);
+}
+
+// New Supabase version
+export async function writeOutboxEventSupabase(supabaseClient: SupabaseClient, event: OutboxEvent): Promise<void> {
+  const { error } = await supabaseClient.from('outbox').insert({
+    id: event.id,
+    aggregate_id: event.aggregateId,
+    topic: event.topic,
+    event_type: event.eventType,
+    payload: event.payload,
+    headers: event.headers || {}
+  });
+  if (error) throw error;
 }
 
 export { runOutboxPublisher, logPublish, createKafkaPublish, createKafkaClientIfConfigured } from './outboxPublisher';

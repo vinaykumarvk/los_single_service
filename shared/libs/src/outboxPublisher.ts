@@ -1,17 +1,16 @@
-import { Pool } from 'pg';
+import { SupabaseClient, connectSupabase, querySupabase } from './supabase-client';
 
 type PublishFn = (topic: string, eventType: string, payload: unknown, headers: Record<string, string>) => Promise<void>;
 
-export async function runOutboxPublisher(pool: Pool, publish: PublishFn, options?: { batchSize?: number; intervalMs?: number }) {
+export async function runOutboxPublisher(supabaseClient: SupabaseClient, publish: PublishFn, options?: { batchSize?: number; intervalMs?: number }) {
   const batchSize = options?.batchSize ?? 50;
   const intervalMs = options?.intervalMs ?? 1000;
 
   // naive loop; replace with worker framework in production
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const client = await pool.connect();
+    const client = await connectSupabase(supabaseClient);
     try {
-      await client.query('BEGIN');
       const { rows } = await client.query(
         `SELECT id, topic, event_type, payload, headers FROM outbox
          WHERE published_at IS NULL
@@ -25,13 +24,11 @@ export async function runOutboxPublisher(pool: Pool, publish: PublishFn, options
         await publish(row.topic, row.event_type, row.payload, headers);
         await client.query('UPDATE outbox SET published_at = now(), attempts = attempts + 1 WHERE id = $1', [row.id]);
       }
-      await client.query('COMMIT');
+      await client.commit();
     } catch (err) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       // eslint-disable-next-line no-console
       console.error('Outbox publish error', err);
-    } finally {
-      client.release();
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }

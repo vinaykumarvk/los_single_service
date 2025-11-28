@@ -36,35 +36,53 @@ This creates:
 
 **Important:** Save the database password displayed at the end!
 
-### 2. Build Docker Images
+### 2. Build & Deploy the Monolith (Default Flow)
 
-Build and push all service images to Artifact Registry:
+The active LOS architecture is a single monolith container. The Cloud Build
+pipeline in this directory now builds `services/monolith`, pushes it to Artifact
+Registry, and immediately deploys/upgrades the Cloud Run service.
 
 ```bash
 # From project root
-gcloud builds submit --config=infra/gcp/cloudbuild.yaml \
-  --substitutions=_GCP_REGION=us-central1,_ARTIFACT_REGISTRY=los-images
+gcloud builds submit \
+  --config=infra/gcp/cloudbuild.yaml \
+  --substitutions=_GCP_REGION=us-central1,_ARTIFACT_REGISTRY=los-images,_SERVICE_NAME=los-monolith
 ```
 
-Or build individual services:
-```bash
-gcloud builds submit --config=infra/gcp/cloudbuild.yaml \
-  --substitutions=_GCP_REGION=us-central1,_ARTIFACT_REGISTRY=los-images \
-  --no-source
-```
+**What this does**
+- Builds `services/monolith/Dockerfile`
+- Pushes tags `${SHORT_SHA}` and `latest` to `${_ARTIFACT_REGISTRY}/monolith`
+- Runs `gcloud run deploy ${_SERVICE_NAME}` with the new image
+- Injects secrets `database-url`, `kafka-brokers`, and `keycloak-config`
+- Attaches the Cloud SQL instance `${PROJECT_ID}:${_GCP_REGION}:los-db`
 
-### 3. Deploy Services to Cloud Run
+Before running the build ensure:
+1. `los-cloud-run@${PROJECT_ID}.iam.gserviceaccount.com` exists with `roles/run.admin`, `roles/iam.serviceAccountUser`, `roles/cloudsql.client`, and `roles/secretmanager.secretAccessor`.
+2. Secret Manager contains `database-url`, `kafka-brokers`, and `keycloak-config`.
+3. Cloud SQL instance name matches the `_CLOUD_SQL_INSTANCE` substitution (defaults to `los-db`).
+
+### 3. (Optional) Legacy Microservice Deployment
+
+If you re-introduce the individual services and still need to deploy them one by
+one, `deploy-services.sh` remains available. It expects Docker images for every
+service listed in the script, so only use it after restoring those directories.
 
 ```bash
 cd infra/gcp
 chmod +x deploy-services.sh
-./deploy-services.sh all [REGION] [PROJECT_ID]
-```
-
-Or deploy a specific service:
-```bash
 ./deploy-services.sh gateway us-central1 my-project-id
 ```
+
+### 4. Validate Monolith Artifacts
+
+Before tagging a release you can confirm the required files exist:
+
+```bash
+./scripts/verify-service-artifacts.sh
+```
+
+The script now focuses on `services/monolith` and fails if either the
+`package.json`, `Dockerfile`, or `src/dist` folders are missing.
 
 ## Architecture
 

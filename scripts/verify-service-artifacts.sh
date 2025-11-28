@@ -5,17 +5,7 @@
 set -euo pipefail
 
 REQUIRED_SERVICES=(
-  "services/underwriting"
-  "services/sanction-offer"
-  "services/payments"
-  "services/disbursement"
-  "services/orchestrator"
-  "services/notifications"
-  "services/audit"
-  "services/bureau"
-  "services/verification"
-  "services/scoring"
-  "services/analytics"
+  "services/monolith"
 )
 
 missing=()
@@ -26,8 +16,8 @@ for service in "${REQUIRED_SERVICES[@]}"; do
     continue
   fi
 
-  if [ ! -f "$service/package.json" ] && [ ! -f "$service/Dockerfile" ]; then
-    missing+=("$service (package.json or Dockerfile missing)")
+if [ ! -f "$service/package.json" ] || [ ! -f "$service/Dockerfile" ]; then
+    missing+=("$service (package.json and/or Dockerfile missing)")
     continue
   fi
 

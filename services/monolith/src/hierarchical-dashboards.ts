@@ -88,7 +88,7 @@ async function getAllSubordinates(supabaseClient: SupabaseClient, managerId: str
 /**
  * Compute dashboard metrics for a user (based on their assigned applications)
  */
-async function computeUserMetrics(
+export async function computeUserMetrics(
   supabaseClient: SupabaseClient,
   userId: string
 ): Promise<DashboardMetrics> {
@@ -139,7 +139,7 @@ async function computeUserMetrics(
 /**
  * Compute aggregated metrics for a manager (sum of all subordinates)
  */
-async function computeManagerMetrics(
+export async function computeManagerMetrics(
   supabaseClient: SupabaseClient,
   managerId: string,
   includeReportees: boolean = false

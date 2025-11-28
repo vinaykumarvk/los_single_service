@@ -3,16 +3,24 @@ import express from 'express';
 import { json } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { createPgPool, correlationIdMiddleware, createLogger } from '@los/shared-libs';
+import { createSupabaseClient, querySupabase, correlationIdMiddleware, createLogger, SupabaseClient } from '@los/shared-libs';
 
-// Ensure DATABASE_URL is set before creating pool
+// Ensure DATABASE_URL is set before creating client
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'postgresql://los:los@localhost:5432/los';
   console.warn('⚠️  DATABASE_URL not set, using default: postgresql://los:los@localhost:5432/los');
 }
 
-// Export pool and app for testing
-export const pool = createPgPool();
+// Export supabaseClient and app for testing
+let supabaseClient: SupabaseClient;
+try {
+  supabaseClient = createSupabaseClient();
+  console.log('✅ Supabase SDK client initialized - all database operations will use Supabase SDK');
+} catch (error) {
+  console.error('❌ Failed to initialize Supabase client:', (error as Error).message);
+  throw error;
+}
+export { supabaseClient };
 const logger = createLogger('customer-kyc-service');
 
 export const app = express();
@@ -32,7 +40,7 @@ app.get('/api/applicants/:id', async (req, res) => {
     
     let rows;
     try {
-      const result = await pool.query(
+      const result = await querySupabase(supabaseClient, 
         `SELECT 
            applicant_id, first_name, middle_name, last_name, 
            date_of_birth, 
@@ -362,7 +370,7 @@ app.post('/api/kyc/:applicationId/start', async (req, res) => {
 // GET /api/kyc/:applicationId/status - get KYC status
 app.get('/api/kyc/:applicationId/status', async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       `SELECT 
          session_id, application_id, applicant_id, status, provider, 
          provider_session_id, remarks, started_at, completed_at, updated_at,

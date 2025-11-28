@@ -3,7 +3,7 @@ import { json } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { createPgPool, correlationIdMiddleware, createLogger, createS3Client, putObjectBuffer, getPresignedUrl } from '@los/shared-libs';
+import { createSupabaseClient, querySupabase, connectSupabase, correlationIdMiddleware, createLogger, createS3Client, putObjectBuffer, getPresignedUrl, SupabaseClient } from '@los/shared-libs';
 import crypto from 'crypto';
 import { extractDocumentMetadata } from './ocr';
 
@@ -15,7 +15,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX
 app.use(json());
 app.use(correlationIdMiddleware);
 
-const pool = createPgPool();
+let supabaseClient: SupabaseClient;
+try {
+  supabaseClient = createSupabaseClient();
+  console.log('✅ Supabase SDK client initialized - all database operations will use Supabase SDK');
+} catch (error) {
+  console.error('❌ Failed to initialize Supabase client:', (error as Error).message);
+  throw error;
+}
 const logger = createLogger('document-service');
 const s3 = createS3Client();
 const bucket = process.env.MINIO_BUCKET || 'los-docs';
@@ -44,10 +51,10 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
 
   const docId = uuidv4();
   const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Extract OCR metadata (non-blocking, but await for transaction)
     let extractedData = null;
@@ -92,15 +99,15 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req, r
       [eventId, req.params.id, 'los.document.DocumentUploaded.v1', 'los.document.DocumentUploaded.v1', JSON.stringify({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey }), JSON.stringify({ correlationId: (req as any).correlationId })]
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     logger.info('DocumentUploaded', { correlationId: (req as any).correlationId, applicationId: req.params.id, docId, docType });
     return res.status(201).json({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('DocumentUploadError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to upload document' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
@@ -110,15 +117,15 @@ app.patch('/api/documents/:docId/verify', async (req, res) => {
   const parsed = VerifySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
 
-  const client = await pool.connect();
+  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
+    // Transaction started;
     
     // Check document exists and get application_id
     const { rows } = await client.query('SELECT application_id, status FROM documents WHERE doc_id = $1', [req.params.docId]);
     if (rows.length === 0) {
-      await client.query('ROLLBACK');
+      await client.rollback();
       return res.status(404).json({ error: 'Document not found' });
     }
 
@@ -135,15 +142,15 @@ app.patch('/api/documents/:docId/verify', async (req, res) => {
       [eventId, rows[0].application_id, 'los.document.DocumentVerified.v1', 'los.document.DocumentVerified.v1', JSON.stringify({ docId: req.params.docId, remarks: parsed.data.remarks }), JSON.stringify({ correlationId: (req as any).correlationId })]
     );
 
-    await client.query('COMMIT');
+    await client.commit();
     logger.info('DocumentVerified', { correlationId: (req as any).correlationId, docId: req.params.docId });
     return res.status(200).json({ docId: req.params.docId, status: 'Verified', verified: true });
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.rollback();
     logger.error('DocumentVerifyError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to verify document' });
   } finally {
-    client.release();
+    // Transaction handles cleanup automatically;
   }
 });
 
@@ -151,7 +158,7 @@ app.patch('/api/documents/:docId/verify', async (req, res) => {
 app.get('/api/applications/:id/checklist', async (req, res) => {
   try {
     // Get product code from application
-    const appResult = await pool.query(
+    const appResult = await querySupabase(supabaseClient, 
       'SELECT product_code FROM applications WHERE application_id = $1',
       [req.params.id]
     );
@@ -162,7 +169,7 @@ app.get('/api/applications/:id/checklist', async (req, res) => {
 
     // Get checklist for this product - join with document_master to get document names
     // Use DISTINCT ON to handle duplicate entries in document_checklist
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       `SELECT DISTINCT ON (dc.doc_type)
          dc.doc_type as document_code,
          COALESCE(dm.document_name, 
@@ -201,7 +208,7 @@ app.get('/api/applications/:id/checklist', async (req, res) => {
 // GET /api/applications/:id/documents - list documents
 app.get('/api/applications/:id/documents', async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await querySupabase(supabaseClient, 
       'SELECT doc_id, doc_type, file_name, file_type, size_bytes, status, created_at, object_key FROM documents WHERE application_id = $1 ORDER BY created_at DESC',
       [req.params.id]
     );
@@ -227,7 +234,7 @@ app.get('/api/applications/:id/documents', async (req, res) => {
 app.get('/api/applications/:id/documents/compliance', async (req, res) => {
   try {
     // Get product code from application
-    const appResult = await pool.query(
+    const appResult = await querySupabase(supabaseClient, 
       'SELECT product_code FROM applications WHERE application_id = $1',
       [req.params.id]
     );
@@ -237,7 +244,7 @@ app.get('/api/applications/:id/documents/compliance', async (req, res) => {
     const productCode = appResult.rows[0].product_code;
 
     // Get checklist for this product
-    const checklistResult = await pool.query(
+    const checklistResult = await querySupabase(supabaseClient, 
       'SELECT doc_type, required FROM document_checklist WHERE product_code = $1',
       [productCode]
     );
@@ -247,7 +254,7 @@ app.get('/api/applications/:id/documents/compliance', async (req, res) => {
     }, {});
 
     // Get uploaded documents
-    const docsResult = await pool.query(
+    const docsResult = await querySupabase(supabaseClient, 
       'SELECT doc_type, status FROM documents WHERE application_id = $1',
       [req.params.id]
     );
@@ -288,7 +295,7 @@ app.get('/api/applications/:id/documents/compliance', async (req, res) => {
 // GET /api/documents/:docId/download - presigned URL
 app.get('/api/documents/:docId/download', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT object_key, file_name, file_type FROM documents WHERE doc_id = $1', [req.params.docId]);
+    const { rows } = await querySupabase(supabaseClient, 'SELECT object_key, file_name, file_type FROM documents WHERE doc_id = $1', [req.params.docId]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
