@@ -114,23 +114,30 @@ async function recordHistory(
   }
 }
 
-// Root endpoint - API information
+// Root endpoint - Serve frontend or API info
 app.get('/', (_req, res) => {
-  res.json({
-    service: 'LOS Monolith API',
-    version: '1.0.0',
-    status: 'running',
-    endpoints: {
-      health: '/health',
-      metrics: '/metrics',
-      auth: '/api/auth/login',
-      applications: '/api/applications',
-      applicants: '/api/applicants',
-      masters: '/api/masters/products',
-      documents: '/api/documents',
-      dashboard: '/api/dashboard'
-    },
-    documentation: 'See API documentation for details'
+  // Try to serve frontend index.html
+  const frontendIndexPath = path.join(__dirname, '../../web-dist/index.html');
+  res.sendFile(frontendIndexPath, (err) => {
+    if (err) {
+      // Fallback to API info if frontend not available
+      res.json({
+        service: 'LOS Monolith API',
+        version: '1.0.0',
+        status: 'running',
+        endpoints: {
+          health: '/health',
+          metrics: '/metrics',
+          auth: '/api/auth/login',
+          applications: '/api/applications',
+          applicants: '/api/applicants',
+          masters: '/api/masters/products',
+          documents: '/api/documents',
+          dashboard: '/api/dashboard'
+        },
+        documentation: 'See API documentation for details'
+      });
+    }
   });
 });
 
