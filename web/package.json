@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:rm": "VITE_PERSONA=rm tsc -b && vite build",
-    "build:admin": "VITE_PERSONA=admin tsc -b && vite build",
-    "build:operations": "VITE_PERSONA=operations tsc -b && vite build",
-    "build:all": "VITE_PERSONA=all tsc -b && vite build",
+    "build": "vite build",
+    "build:rm": "VITE_PERSONA=rm vite build",
+    "build:admin": "VITE_PERSONA=admin vite build",
+    "build:operations": "VITE_PERSONA=operations vite build",
+    "build:all": "VITE_PERSONA=all vite build",
     "preview": "vite preview --port 5173"
   },
   "dependencies": {
