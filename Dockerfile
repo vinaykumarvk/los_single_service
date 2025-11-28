@@ -9,7 +9,7 @@ COPY services/monolith/ ./services/monolith/
 
 # Install pnpm and dependencies
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Build monolith
 WORKDIR /app/services/monolith
