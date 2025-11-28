@@ -11,6 +11,10 @@ COPY services/monolith/ ./services/monolith/
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 RUN pnpm install --no-frozen-lockfile
 
+# Build shared libs first (required by monolith)
+WORKDIR /app/shared/libs
+RUN pnpm build
+
 # Build monolith
 WORKDIR /app/services/monolith
 RUN pnpm build
@@ -29,7 +33,8 @@ COPY services/monolith/ ./services/monolith/
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 RUN pnpm install --no-frozen-lockfile --prod
 
-# Copy built files
+# Copy built files (both shared libs and monolith)
+COPY --from=builder /app/shared/libs/dist ./shared/libs/dist
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
 
 WORKDIR /app/services/monolith

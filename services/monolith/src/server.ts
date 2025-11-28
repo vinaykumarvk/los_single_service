@@ -1802,8 +1802,17 @@ app.get('/api/masters/calendar/holidays', async (req, res) => {
 // Only start server if this file is run directly (not imported for tests)
 if (require.main === module) {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-  app.listen(port, () => {
+  
+  console.log('🚀 Starting LOS Monolith Service...');
+  console.log('📋 Environment check:');
+  console.log(`   PORT: ${port}`);
+  console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? 'SET ✅' : 'NOT SET ❌'}`);
+  console.log(`   SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET ✅' : 'NOT SET ❌'}`);
+  
+  app.listen(port, '0.0.0.0', () => {
     logger.info('MonolithServiceStarted', { port });
-    console.log(`✅ LOS Monolith Service started on port ${port}`);
+    console.log(`✅ LOS Monolith Service started successfully on port ${port}`);
+    console.log(`   Health endpoint: http://0.0.0.0:${port}/health`);
   });
 }
