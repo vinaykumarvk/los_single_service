@@ -27,7 +27,7 @@ COPY services/monolith/ ./services/monolith/
 
 # Install production dependencies only
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --no-frozen-lockfile --prod
 
 # Copy built files
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
