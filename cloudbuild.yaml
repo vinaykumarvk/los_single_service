@@ -1,0 +1,52 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_IMAGE_URL}'
+      - '.'
+    id: 'build'
+
+  # Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_IMAGE_URL}'
+    id: 'push'
+    waitFor: ['build']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image=${_IMAGE_URL}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--port=3000'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--max-instances=10'
+      - '--min-instances=0'
+      - '--timeout=300'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=NODE_ENV=production,PORT=3000'
+      - '--update-secrets=DATABASE_URL=database-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest'
+    id: 'deploy'
+    waitFor: ['push']
+
+substitutions:
+  _SERVICE_NAME: 'los-single-service'
+  _REGION: 'europe-west1'
+  _IMAGE_URL: '${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/los_single_service/los-single-service:${SHORT_SHA}'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+images:
+  - '${_IMAGE_URL}'
+
