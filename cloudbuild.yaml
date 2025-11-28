@@ -33,8 +33,9 @@ steps:
       - '--min-instances=0'
       - '--timeout=300'
       - '--allow-unauthenticated'
-      - '--set-env-vars=NODE_ENV=production,PORT=3000'
-      - '--update-secrets=DATABASE_URL=database-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest'
+      - '--set-env-vars=NODE_ENV=production'
+      # Uncomment after creating secrets in Secret Manager:
+      # - '--update-secrets=DATABASE_URL=database-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest'
     id: 'deploy'
     waitFor: ['push']
 
