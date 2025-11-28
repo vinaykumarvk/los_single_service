@@ -146,6 +146,15 @@ app.get('/metrics', metricsHandler);
 
 // Serve static frontend files (if available)
 const frontendPath = path.join(__dirname, '../../web-dist');
+console.log('📁 Frontend path:', frontendPath);
+console.log('📁 __dirname:', __dirname);
+try {
+  const fs = require('fs');
+  const files = fs.readdirSync(frontendPath);
+  console.log('📁 Files in frontend path:', files);
+} catch (err) {
+  console.error('❌ Error reading frontend path:', err.message);
+}
 app.use(express.static(frontendPath));
 
 // ============================================
