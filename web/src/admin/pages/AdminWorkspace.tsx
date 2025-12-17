@@ -1,10 +1,56 @@
-import { ClipboardCheck, Database, Settings, Shield } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ClipboardCheck, Database, Settings, Shield, Package, Users, Zap } from 'lucide-react';
 import PersonaMenu from '../../components/PersonaMenu';
 import { personaConfigs } from '../../persona/config';
+import { apiClient } from '../../shared/lib/api-client';
+import Spinner from '../../components/ui/Spinner';
 
 const adminPersona = personaConfigs.find((persona) => persona.id === 'admin');
 
+interface AdminStats {
+  products: number;
+  activePersonas: number;
+  totalApplications: number;
+}
+
 export default function AdminWorkspace() {
+  const [stats, setStats] = useState<AdminStats>({
+    products: 0,
+    activePersonas: 3, // RM, Ops, Admin
+    totalApplications: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadAdminData();
+  }, []);
+
+  const loadAdminData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch products count
+      const productsRes = await apiClient.get('/api/masters/products');
+      const productsList = Array.isArray(productsRes.data) ? productsRes.data : [];
+      setProducts(productsList);
+      
+      // Fetch total applications count
+      const appsRes = await apiClient.get('/api/applications', { params: { limit: 1 } });
+      const totalApps = appsRes.data?.pagination?.total || appsRes.data?.applications?.length || 0;
+
+      setStats({
+        products: productsList.length,
+        activePersonas: 3,
+        totalApplications: totalApps,
+      });
+    } catch (err) {
+      console.error('Failed to load admin data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -25,11 +71,17 @@ export default function AdminWorkspace() {
                   LOS services.
                 </p>
               </div>
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <AdminStat label="Products" value="12" />
-                <AdminStat label="Active Personas" value="3" />
-                <AdminStat label="Automation Jobs" value="24" />
-              </div>
+              {loading ? (
+                <div className="mt-6 flex justify-center py-4">
+                  <Spinner />
+                </div>
+              ) : (
+                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                  <AdminStat label="Products" value={stats.products.toString()} icon={Package} />
+                  <AdminStat label="Active Personas" value={stats.activePersonas.toString()} icon={Users} />
+                  <AdminStat label="Total Applications" value={stats.totalApplications.toString()} icon={Zap} />
+                </div>
+              )}
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
@@ -54,6 +106,48 @@ export default function AdminWorkspace() {
                 </div>
               ))}
             </div>
+
+            {/* Products List */}
+            {!loading && products.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-800 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Database className="h-5 w-5 text-orange-600" />
+                    Product Catalog
+                  </h2>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {products.slice(0, 6).map((product: any) => (
+                    <div
+                      key={product.product_code}
+                      className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {product.name || product.product_code}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {product.product_code}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Amount Range</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            ₹{product.min_amount?.toLocaleString() || 'N/A'} - ₹{product.max_amount?.toLocaleString() || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {products.length > 6 && (
+                  <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+                    +{products.length - 6} more products
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 space-y-4">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -88,11 +182,26 @@ export default function AdminWorkspace() {
   );
 }
 
-function AdminStat({ label, value }: { label: string; value: string }) {
+function AdminStat({ 
+  label, 
+  value, 
+  icon: Icon 
+}: { 
+  label: string; 
+  value: string; 
+  icon: any;
+}) {
   return (
     <div className="rounded-2xl border border-gray-100 dark:border-gray-800 p-4 bg-white dark:bg-gray-900/40">
-      <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
+        </div>
+        <div className="p-2 rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
     </div>
   );
 }

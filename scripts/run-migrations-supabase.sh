@@ -108,3 +108,6 @@ echo ""
 echo "🌐 Your Supabase project: https://supabase.com/dashboard/project/$SUPABASE_PROJECT"
 echo ""
 
+
+
+

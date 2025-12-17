@@ -536,9 +536,12 @@ app.post('/api/masters/rules', async (req: Request, res: Response) => {
       return res.status(201).json({ ruleId, ruleCode, ruleName, approvalStatus: 'Draft' });
     } catch (err: any) {
       await client.rollback();
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'Rule code already exists' });
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Rule code already exists' });
+      }
+      return res.status(500).json({ error: 'Failed to create rule' });
     }
+  } catch (err) {
     return res.status(500).json({ error: 'Failed to create rule' });
   }
 });
@@ -579,6 +582,9 @@ app.patch('/api/masters/rules/:ruleId/submit', async (req: Request, res: Respons
       return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'PendingApproval' });
     } catch (err) {
       await client.rollback();
+      return res.status(500).json({ error: 'Failed to submit rule' });
+    }
+  } catch (err) {
     return res.status(500).json({ error: 'Failed to submit rule' });
   }
 });
@@ -619,6 +625,9 @@ app.patch('/api/masters/rules/:ruleId/approve', async (req: Request, res: Respon
       return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'Approved', isActive: true });
     } catch (err) {
       await client.rollback();
+      return res.status(500).json({ error: 'Failed to approve rule' });
+    }
+  } catch (err) {
     return res.status(500).json({ error: 'Failed to approve rule' });
   }
 });
@@ -660,6 +669,9 @@ app.patch('/api/masters/rules/:ruleId/reject', async (req: Request, res: Respons
       return res.status(200).json({ ruleId: req.params.ruleId, approvalStatus: 'Rejected' });
     } catch (err) {
       await client.rollback();
+      return res.status(500).json({ error: 'Failed to reject rule' });
+    }
+  } catch (err) {
     return res.status(500).json({ error: 'Failed to reject rule' });
   }
 });

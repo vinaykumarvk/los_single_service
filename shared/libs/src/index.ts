@@ -18,11 +18,12 @@ export function createPgPool(configOrUrl?: string | PoolConfig): Pool {
   // Handle SSL for Supabase and other cloud databases
   const connectionString = poolConfig.connectionString || process.env.DATABASE_URL || '';
   if (connectionString.includes('supabase.co') || connectionString.includes('sslmode=require')) {
-    // Ensure SSL is properly configured - merge with existing SSL config if present
+    // Respect PGSSLMODE environment variable or default to no-verify for Supabase
+    const sslMode = process.env.PGSSLMODE || 'no-verify';
     const existingSsl = typeof poolConfig.ssl === 'object' && poolConfig.ssl !== null ? poolConfig.ssl : {};
     poolConfig.ssl = {
       ...existingSsl,
-      rejectUnauthorized: false
+      rejectUnauthorized: sslMode === 'no-verify' || sslMode === 'disable'
     } as any;
     // Also ensure connection string has sslmode if it's a Supabase URL
     if (connectionString.includes('supabase.co') && !connectionString.includes('sslmode=')) {

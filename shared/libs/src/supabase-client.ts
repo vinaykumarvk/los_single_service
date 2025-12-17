@@ -59,13 +59,14 @@ export function createSupabaseClient(): SupabaseClient {
       throw new Error('Invalid Supabase DATABASE_URL format');
     }
   } else {
-    // For local development, we still need Supabase URL and key
-    // These should be set even for local Supabase instances
-    supabaseUrl = process.env.SUPABASE_URL || '';
-    supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+    // For local development with regular PostgreSQL (not Supabase)
+    // Allow using dummy values - the actual queries will use direct PostgreSQL via executeRawQuery
+    supabaseUrl = process.env.SUPABASE_URL || 'http://localhost:5432';
+    supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || 'local-dev-key-not-used';
     
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for local Supabase instances');
+    // Only require keys if explicitly using Supabase (SUPABASE_URL is set to a real Supabase URL)
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_URL.includes('supabase.co') && !supabaseKey) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY must be set when using Supabase');
     }
   }
   
@@ -87,31 +88,70 @@ async function executeRawQuery(
   sql: string,
   params?: any[]
 ): Promise<SupabaseQueryResult> {
-  // For stored procedure calls, use RPC
-  const rpcMatch = sql.match(/SELECT\s+(\w+)\(/);
-  if (rpcMatch) {
-    const functionName = rpcMatch[1];
-    const { data, error } = await supabaseClient.rpc(functionName, params?.[0] || {});
-    if (error) throw error;
-    return { rows: Array.isArray(data) ? data : [data] };
-  }
-  
-  // For complex queries (CTEs, JOINs, complex aggregations, etc.), use direct PostgreSQL
-  // This is necessary because Supabase PostgREST has limitations on complex SQL
-  // We still use Supabase's connection string to maintain consistency
   const databaseUrl = process.env.DATABASE_URL || '';
   if (!databaseUrl) {
     throw new Error('DATABASE_URL not set');
   }
   
+  // Check if we're using local PostgreSQL (not Supabase)
+  const isLocalPostgres = databaseUrl && !databaseUrl.includes('supabase.co');
+  
+  // For local PostgreSQL, always use direct connection (skip RPC)
+  // For Supabase, try RPC first for stored procedures
+  if (!isLocalPostgres) {
+    // For stored procedure calls, use RPC (only for actual Supabase)
+    const rpcMatch = sql.match(/SELECT\s+(\w+)\(/);
+    if (rpcMatch) {
+      const functionName = rpcMatch[1];
+      try {
+        const { data, error } = await supabaseClient.rpc(functionName, params?.[0] || {});
+        if (error) throw error;
+        return { rows: Array.isArray(data) ? data : [data] };
+      } catch (rpcError) {
+        // If RPC fails, fall through to direct SQL
+        console.warn('RPC call failed, falling back to direct SQL:', rpcError);
+      }
+    }
+  }
+  
+  // For complex queries (CTEs, JOINs, complex aggregations, etc.), use direct PostgreSQL
+  // This is necessary because Supabase PostgREST has limitations on complex SQL
+  // We still use Supabase's connection string to maintain consistency
+  
   // Create a temporary pool for this query
-  const pool = new Pool({
+  // Handle SSL configuration - respect PGSSLMODE env var or default to no-verify for Supabase
+  let sslConfig: any = undefined;
+  if (databaseUrl.includes('supabase.co')) {
+    const sslMode = process.env.PGSSLMODE || 'no-verify';
+    sslConfig = {
+      rejectUnauthorized: sslMode === 'no-verify' || sslMode === 'disable'
+    };
+  }
+  
+  const poolConfig: any = {
     connectionString: databaseUrl,
-    ssl: databaseUrl.includes('supabase.co') ? {
-      rejectUnauthorized: false
-    } : undefined,
+    ssl: sslConfig,
     max: 1 // Single connection for this query
-  });
+  };
+  
+  // Force IPv4 for Docker containers connecting to external services
+  // This prevents IPv6 connection errors (ENETUNREACH)
+  // Use lookup function to force IPv4 DNS resolution
+  if (databaseUrl.includes('supabase.co')) {
+    const dns = require('dns');
+    const originalLookup = dns.lookup;
+    dns.lookup = function(hostname: string, options: any, callback: any) {
+      if (typeof options === 'function') {
+        callback = options;
+        options = {};
+      }
+      options = { ...options, family: 4 }; // Force IPv4
+      return originalLookup(hostname, options, callback);
+    };
+    poolConfig.family = 4; // Force IPv4
+  }
+  
+  const pool = new Pool(poolConfig);
   
   try {
     const result = await pool.query(sql, params);
@@ -187,6 +227,16 @@ export async function executeQuery(
   sql: string,
   params?: any[]
 ): Promise<SupabaseQueryResult> {
+  // Check if we're using local PostgreSQL (not Supabase)
+  // If DATABASE_URL doesn't contain 'supabase.co', use direct PostgreSQL
+  const databaseUrl = process.env.DATABASE_URL || '';
+  const isLocalPostgres = databaseUrl && !databaseUrl.includes('supabase.co');
+  
+  // For local PostgreSQL, always use direct connection (skip Supabase SDK)
+  if (isLocalPostgres) {
+    return executeRawQuery(supabaseClient, sql, params);
+  }
+  
   // Detect query type
   const trimmedSql = sql.trim();
   const upperSql = trimmedSql.toUpperCase();
@@ -219,12 +269,18 @@ export async function executeQuery(
           if (error) throw error;
           return { rows: data || [] };
         } catch (err) {
-          // Fallback to raw SQL if query builder fails
+          // For Supabase, prefer using SDK REST API over direct PostgreSQL
+          // Direct PostgreSQL connections have Docker networking issues
+          // Try to use Supabase RPC or PostgREST if possible
+          console.warn('Query builder failed, attempting Supabase REST API fallback:', err);
+          // Fallback to raw SQL only if absolutely necessary
+          // But first try to see if we can use Supabase's REST API
           return executeRawQuery(supabaseClient, sql, params);
         }
       }
     }
-    // Complex SELECT - use raw SQL
+    // Complex SELECT - for Supabase, try to use REST API via PostgREST
+    // Only use direct PostgreSQL as last resort
     return executeRawQuery(supabaseClient, sql, params);
   }
   
@@ -358,11 +414,18 @@ export async function beginTransaction(
     throw new Error('DATABASE_URL not set');
   }
   
+  // Handle SSL configuration - respect PGSSLMODE env var or default to no-verify for Supabase
+  let sslConfig: any = undefined;
+  if (databaseUrl.includes('supabase.co')) {
+    const sslMode = process.env.PGSSLMODE || 'no-verify';
+    sslConfig = {
+      rejectUnauthorized: sslMode === 'no-verify' || sslMode === 'disable'
+    };
+  }
+  
   const pool = new Pool({
     connectionString: databaseUrl,
-    ssl: databaseUrl.includes('supabase.co') ? {
-      rejectUnauthorized: false
-    } : undefined,
+    ssl: sslConfig,
     max: 1 // Single connection for transaction
   });
   

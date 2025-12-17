@@ -21,16 +21,30 @@ export class JWTAuthProvider implements AuthProvider {
       console.log('🔐 Attempting login to:', loginUrl);
       console.log('📝 Username:', credentials.username);
       
-      const response = await fetch(loginUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: credentials.username,
-          password: credentials.password,
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(loginUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: credentials.username,
+            password: credentials.password,
+          }),
+        });
+      } catch (fetchError: any) {
+        // Network errors (CORS, connection refused, etc.)
+        console.error('❌ Network error during login:', fetchError);
+        const errorMessage = fetchError.message || 'Network error';
+        if (errorMessage.includes('Failed to fetch') || 
+            errorMessage.includes('NetworkError') ||
+            errorMessage.includes('Network request failed') ||
+            errorMessage.includes('CORS')) {
+          throw new Error('Unable to connect to the server. Please check if the backend is running and accessible.');
+        }
+        throw new Error(`Network error: ${errorMessage}`);
+      }
 
       console.log('📡 Response status:', response.status, response.statusText);
       // Headers might not support entries() in all environments
@@ -45,50 +59,97 @@ export class JWTAuthProvider implements AuthProvider {
       }
 
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorText = '';
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          errorText = `HTTP ${response.status}: ${response.statusText}`;
+        }
         console.error('❌ Login failed - Response:', errorText);
         let error;
         try {
           error = JSON.parse(errorText);
         } catch {
-          error = { error: errorText || 'Login failed' };
+          error = { error: errorText || `Login failed (${response.status})` };
         }
-        throw new Error(error.error || error.message || 'Login failed');
+        const errorMessage = error.error || error.message || `Login failed (${response.status})`;
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
+      let data: any;
+      try {
+        const responseText = await response.text();
+        if (!responseText) {
+          throw new Error('Empty response from server');
+        }
+        data = JSON.parse(responseText);
+      } catch (parseError: any) {
+        console.error('❌ Failed to parse login response:', parseError);
+        throw new Error('Invalid response from server. Please try again.');
+      }
+      
       console.log('✅ Login successful - Response:', { ...data, accessToken: data.accessToken ? '***' : null });
       
       const token = data.accessToken || data.token;
       const refreshToken = data.refreshToken;
 
-      if (token) {
-        // Store tokens
-        localStorage.setItem(this.storageKey, token);
-        if (refreshToken) {
-          localStorage.setItem(`${this.storageKey}_refresh`, refreshToken);
-        }
-
-        // Store user info if provided
-        if (data.user) {
-          localStorage.setItem(`${this.storageKey}_user`, JSON.stringify(data.user));
-        }
-
-        return {
-          token,
-          refreshToken,
-          user: data.user,
-        };
+      if (!token) {
+        console.error('❌ No token in response:', data);
+        throw new Error('No authentication token received from server. Please try again.');
       }
 
-      throw new Error('No token received from server');
+      // Store tokens
+      localStorage.setItem(this.storageKey, token);
+      if (refreshToken) {
+        localStorage.setItem(`${this.storageKey}_refresh`, refreshToken);
+      }
+
+      // Store user info if provided
+      let userToStore = data.user;
+      if (!userToStore) {
+        // If no user in response, try to extract from token
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            userToStore = {
+              id: payload.sub || payload.user_id,
+              username: payload.username,
+              email: payload.email,
+              roles: payload.roles || [],
+            };
+            console.log('[JWT] Extracted user from token:', userToStore);
+          }
+        } catch (e) {
+          console.warn('Could not extract user from token:', e);
+        }
+      }
+      
+      // Always store user if we have it
+      if (userToStore) {
+        localStorage.setItem(`${this.storageKey}_user`, JSON.stringify(userToStore));
+        // Dispatch custom event to notify other components
+        window.dispatchEvent(new CustomEvent('los_token_updated', { detail: { user: userToStore } }));
+        console.log('[JWT] User stored in localStorage and event dispatched');
+      }
+      
+      // Update data.user for return value
+      if (userToStore) {
+        data.user = userToStore;
+      }
+
+      return {
+        token,
+        refreshToken,
+        user: data.user,
+      };
     } catch (error: any) {
       console.error('JWT Login Error:', error);
-      // If it's a network error, provide more helpful message
-      if (error.message?.includes('fetch') || error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
-        throw new Error('Network error: Unable to connect to authentication service. Please check if the server is running.');
+      // Ensure we always throw a meaningful error
+      if (error instanceof Error) {
+        throw error;
       }
-      throw error;
+      throw new Error(error?.message || 'Login failed. Please try again.');
     }
   }
 

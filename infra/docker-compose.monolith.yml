@@ -69,7 +69,9 @@ services:
       - "8080:8080"
     restart: unless-stopped
 
-  # Monolithic Service (All services combined)
+  # Monolithic Service (All services combined + Frontend)
+  # This matches production deployment exactly
+  # Configured to use Supabase database (from .env file)
   monolith:
     build:
       context: ..
@@ -78,7 +80,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgres://${POSTGRES_USER:-los}:${POSTGRES_PASSWORD:-los}@postgres:5432/${POSTGRES_DB:-los}
+      # Supabase Database Connection - explicitly set to Supabase
+      DATABASE_URL: postgresql://postgres:i3Oy1wcItkORuVlU@db.orqupfsguquusnethtbt.supabase.co:5432/postgres?sslmode=require
+      SUPABASE_URL: ${SUPABASE_URL:-https://orqupfsguquusnethtbt.supabase.co}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ycXVwZnNndXF1dXNuZXRodGJ0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDI2MzcyNCwiZXhwIjoyMDc5ODM5NzI0fQ.JmNQZxevtxqpaKFJrcdzkAGmBEr_tQ2Dy1fCruMhnq8}
       KAFKA_BROKERS: ${KAFKA_BROKERS:-redpanda:9092}
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
@@ -90,19 +95,29 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-in-production-refresh-secret-key-min-32-chars}
     ports:
       - "3000:3000"
+    # Configure DNS to use host's resolver - fixes Supabase hostname resolution in Docker
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    # Dependencies are optional - monolith can work without local postgres if using Supabase
     depends_on:
-      postgres:
-        condition: service_healthy
-      redpanda:
-        condition: service_healthy
       minio:
         condition: service_healthy
+      # postgres and redpanda are optional if using Supabase
+      # postgres:
+      #   condition: service_healthy
+      # redpanda:
+      #   condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    # Mount source code for development (optional - comment out for production-like testing)
+    # volumes:
+    #   - ../services/monolith/src:/app/services/monolith/src:ro
+    #   - ../shared:/app/shared:ro
 
 volumes:
   pgdata:

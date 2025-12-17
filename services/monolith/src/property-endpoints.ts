@@ -25,56 +25,50 @@ export function setupPropertyEndpoints(app: any, supabaseClient: SupabaseClient)
       return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
     }
 
-    const client = await connectSupabase(supabaseClient);
-    
     try {
-      // Check application exists
-      const { rows: appRows } = await client.query(
-        'SELECT application_id, status FROM applications WHERE application_id = $1',
-        [req.params.id]
-      );
-      if (appRows.length === 0) {
-        await client.rollback();
+      // Check application exists using Supabase SDK
+      const { data: appData, error: appError } = await supabaseClient
+        .from('applications')
+        .select('application_id, status')
+        .eq('application_id', req.params.id)
+        .maybeSingle();
+      
+      if (appError || !appData) {
         return res.status(404).json({ error: 'Application not found' });
       }
       
       // Only allow updates for Draft or Submitted applications
-      if (!['Draft', 'Submitted'].includes(appRows[0].status)) {
-        await client.rollback();
-        return res.status(400).json({ error: `Cannot update property for application in ${appRows[0].status} status` });
+      if (!['Draft', 'Submitted'].includes(appData.status)) {
+        return res.status(400).json({ error: `Cannot update property for application in ${appData.status} status` });
       }
 
-      // Upsert property details
-      await client.query(
-        `INSERT INTO property_details (
-           application_id, property_type, builder_name, project_name, property_value,
-           property_address, property_pincode, property_city, property_state
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (application_id) DO UPDATE SET
-           property_type = EXCLUDED.property_type,
-           builder_name = EXCLUDED.builder_name,
-           project_name = EXCLUDED.project_name,
-           property_value = EXCLUDED.property_value,
-           property_address = EXCLUDED.property_address,
-           property_pincode = EXCLUDED.property_pincode,
-           property_city = EXCLUDED.property_city,
-           property_state = EXCLUDED.property_state,
-           updated_at = now()`,
-        [
-          req.params.id,
-          parsed.data.propertyType,
-          parsed.data.builderName || null,
-          parsed.data.projectName || null,
-          parsed.data.propertyValue || null,
-          parsed.data.propertyAddress || null,
-          parsed.data.propertyPincode || null,
-          parsed.data.propertyCity || null,
-          parsed.data.propertyState || null,
-        ]
-      );
+      // Build property payload for Supabase SDK
+      const propertyPayload: any = {
+        application_id: req.params.id,
+        property_type: parsed.data.propertyType,
+        builder_name: parsed.data.builderName || null,
+        project_name: parsed.data.projectName || null,
+        property_value: parsed.data.propertyValue || null,
+        property_address: parsed.data.propertyAddress || null,
+        property_pincode: parsed.data.propertyPincode || null,
+        property_city: parsed.data.propertyCity || null,
+        property_state: parsed.data.propertyState || null,
+        updated_at: new Date().toISOString()
+      };
 
-      await client.commit();
+      // Upsert property details using Supabase SDK
+      const { error: upsertError } = await supabaseClient
+        .from('property_details')
+        .upsert(propertyPayload, { onConflict: 'application_id' });
+      
+      if (upsertError) {
+        logger.error('UpsertPropertyError', { 
+          error: upsertError.message, 
+          correlationId: (req as any).correlationId,
+          applicationId: req.params.id
+        });
+        return res.status(500).json({ error: 'Failed to update property details' });
+      }
       
       logger.info('UpsertProperty', { correlationId: (req as any).correlationId, applicationId: req.params.id });
       return res.status(200).json({ 
@@ -83,7 +77,6 @@ export function setupPropertyEndpoints(app: any, supabaseClient: SupabaseClient)
         updated: true 
       });
     } catch (err) {
-      await client.rollback();
       logger.error('UpsertPropertyError', { error: (err as Error).message, correlationId: (req as any).correlationId });
       return res.status(500).json({ error: 'Failed to update property details' });
     }

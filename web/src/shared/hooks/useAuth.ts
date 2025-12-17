@@ -25,6 +25,44 @@ export function useAuth(): UseAuthReturn {
     try {
       setLoading(true);
       
+      // First, try to get user directly from localStorage as fast path
+      const userStr = localStorage.getItem('los_token_user');
+      if (userStr) {
+        try {
+          const cachedUser = JSON.parse(userStr);
+          const token = localStorage.getItem('los_token');
+          if (token) {
+            // Verify token is valid
+            try {
+              const parts = token.split('.');
+              if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1]));
+                const expiresAt = payload.exp * 1000;
+                if (Date.now() < expiresAt) {
+                  // Token is valid, use cached user immediately
+                  console.log('[useAuth] Using cached user from localStorage:', cachedUser);
+                  setUser(cachedUser);
+                  setLoading(false);
+                  // Still validate in background, but don't wait
+                  getAuthState().then(authState => {
+                    if (!authState.isAuthenticated) {
+                      console.warn('[useAuth] Auth state validation failed, clearing user');
+                      setUser(null);
+                    }
+                  }).catch(console.error);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn('[useAuth] Token validation failed:', e);
+            }
+          }
+        } catch (e) {
+          console.warn('[useAuth] Failed to parse cached user:', e);
+        }
+      }
+      
+      // Fallback to full auth state check
       // CRITICAL: Use auth-stability module for consistent state checking
       const authState = await getAuthState();
       
@@ -63,23 +101,63 @@ export function useAuth(): UseAuthReturn {
 
   useEffect(() => {
     loadUser();
+    
+    // Listen for storage changes (e.g., when login stores token in another tab/component)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'los_token' || e.key === 'los_token_user') {
+        console.log('[useAuth] Storage changed, reloading user...');
+        loadUser();
+      }
+    };
+    
+    // Also listen for custom events (for same-tab updates)
+    const handleTokenUpdate = () => {
+      console.log('[useAuth] Token update event received, reloading user...');
+      loadUser();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('los_token_updated', handleTokenUpdate);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('los_token_updated', handleTokenUpdate);
+    };
   }, [loadUser]);
 
   const login = useCallback(async (username: string, password: string) => {
     try {
       setLoading(true);
+      console.log('[useAuth] Starting login for:', username);
       // For Keycloak, this will throw (redirect flow)
       // For JWT, this will work normally
-      await authProvider.login({ username, password });
+      const result = await authProvider.login({ username, password });
+      console.log('[useAuth] Login result received:', { hasUser: !!result?.user, hasToken: !!result?.token });
       
-      // After successful login, load user
-      await loadUser();
-    } catch (error: any) {
-      // If error is redirect-related (Keycloak), that's expected
-      if (error.message?.includes('redirect')) {
-        // Keycloak will handle redirect, just return
+      // CRITICAL: Immediately set user state from login result if available
+      // This prevents race condition where navigation happens before state updates
+      if (result?.user) {
+        console.log('[useAuth] Setting user immediately from login result:', result.user);
+        setUser(result.user);
+        setLoading(false); // Set loading false immediately so navigation can proceed
+        // Still call loadUser in background to ensure token validation, but don't wait
+        loadUser().catch(console.error);
         return;
       }
+      
+      // If no user in result, load from token (fallback)
+      console.log('[useAuth] No user in result, loading from token...');
+      await loadUser();
+    } catch (error: any) {
+      console.error('[useAuth] Login error caught:', error);
+      // If error is redirect-related (Keycloak), that's expected
+      if (error?.message?.includes('redirect')) {
+        // Keycloak will handle redirect, just return
+        console.log('[useAuth] Keycloak redirect, ignoring error');
+        return;
+      }
+      // Re-throw error so Login component can catch and display it
+      console.error('[useAuth] Re-throwing login error:', error);
       throw error;
     } finally {
       setLoading(false);

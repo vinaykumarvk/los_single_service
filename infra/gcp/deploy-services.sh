@@ -1,13 +1,15 @@
 #!/bin/bash
 
-# Cloud Run Deployment Script for LOS Services
-# Usage: ./deploy-services.sh [service-name] [region] [project-id]
+# Cloud Run Deployment Script for LOS Monolith
+# Usage: ./deploy-services.sh [region] [project-id]
+# 
+# Note: This script now only deploys the monolith service.
+# All individual microservices have been consolidated into the monolith.
 
 set -e
 
-SERVICE_NAME=${1:-all}
-REGION=${2:-us-central1}
-PROJECT_ID=${3:-$GOOGLE_CLOUD_PROJECT}
+REGION=${1:-us-central1}
+PROJECT_ID=${2:-$GOOGLE_CLOUD_PROJECT}
 ARTIFACT_REGISTRY="los-images"
 IMAGE_REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REGISTRY}"
 
@@ -63,49 +65,10 @@ deploy_service() {
   echo "✓ ${service} deployed"
 }
 
-# Deploy all services or a specific one
-if [ "$SERVICE_NAME" = "all" ]; then
-  echo "Deploying all services to Cloud Run..."
-  
-  # Gateway (higher resources, always-on)
-  deploy_service "gateway" "3000" "latest" "1" "20" "1Gi" "2" "100"
-  
-  # Core services
-  deploy_service "application" "3001" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "customer-kyc" "3002" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "document" "3003" "latest" "0" "10" "1Gi" "2" "40"  # More memory for file handling
-  deploy_service "masters" "3004" "latest" "0" "5" "256Mi" "1" "100"
-  
-  # Business logic services
-  deploy_service "underwriting" "3006" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "sanction-offer" "3007" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "payments" "3008" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "disbursement" "3009" "latest" "0" "10" "512Mi" "1" "80"
-  
-  # System services
-  deploy_service "orchestrator" "3010" "latest" "0" "5" "512Mi" "1" "80"
-  deploy_service "notifications" "3011" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "audit" "3012" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "bureau" "3013" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "verification" "3014" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "reporting" "3015" "latest" "0" "10" "512Mi" "1" "80"
-  deploy_service "integration-hub" "3020" "latest" "0" "10" "512Mi" "1" "80"
-  
-  echo "✓ All services deployed!"
-else
-  # Deploy specific service (you may need to adjust resources per service)
-  case $SERVICE_NAME in
-    gateway)
-      deploy_service "gateway" "3000" "latest" "1" "20" "1Gi" "2" "100"
-      ;;
-    document)
-      deploy_service "document" "3003" "latest" "0" "10" "1Gi" "2" "40"
-      ;;
-    *)
-      deploy_service "$SERVICE_NAME" "3001" "latest" "0" "10" "512Mi" "1" "80"
-      ;;
-  esac
-fi
+# Deploy monolith service only
+echo "Deploying LOS Monolith service to Cloud Run..."
+deploy_service "monolith" "3000" "latest" "1" "20" "2Gi" "2" "100"
+echo "✓ Monolith service deployed!"
 
 echo ""
 echo "Deployment complete!"

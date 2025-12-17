@@ -1,8 +1,10 @@
 steps:
-  # Build the Docker image
+  # Build the Docker image (monolith only)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '-f'
+      - 'services/monolith/Dockerfile'
       - '-t'
       - '${_IMAGE_URL}'
       - '.'
@@ -39,9 +41,9 @@ steps:
     waitFor: ['push']
 
 substitutions:
-  _SERVICE_NAME: 'los-single-service'
-  _REGION: 'europe-west1'
-  _IMAGE_URL: '${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/los_single_service/los-single-service:${SHORT_SHA}'
+  _SERVICE_NAME: 'los-monolith'
+  _REGION: 'us-central1'
+  _IMAGE_URL: '${_REGION}-docker.pkg.dev/${PROJECT_ID}/los-images/monolith:${SHORT_SHA}'
 
 options:
   logging: CLOUD_LOGGING_ONLY

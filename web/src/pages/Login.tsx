@@ -18,7 +18,7 @@ import PasswordStrength from '../components/ui/PasswordStrength';
 export default function Login() {
   const navigate = useNavigate();
   const [rememberMe, setRememberMe] = useState(false);
-  const { login, loading, isAuthenticated, user } = useAuth();
+  const { login, loading, isAuthenticated, user, refreshUser } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,9 +26,25 @@ export default function Login() {
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
 
   useEffect(() => {
-    // Only redirect if truly authenticated with a valid user object
-    if (isAuthenticated && user) {
-      navigate('/');
+    // Don't auto-redirect on login page - let handleSubmit handle navigation
+    // Only redirect if we're already authenticated and somehow ended up on login page
+    // (e.g., from a direct URL access when already logged in)
+    if (isAuthenticated && user && !loading) {
+      // Only redirect if we didn't just log in (check if we're in the middle of a login attempt)
+      const justLoggedIn = sessionStorage.getItem('los_just_logged_in');
+      if (!justLoggedIn) {
+        // User is already authenticated, redirect based on roles
+        const roles = user.roles || [];
+        if (roles.includes('rm') || roles.includes('relationship_manager')) {
+          navigate('/rm');
+        } else if (roles.includes('admin')) {
+          navigate('/admin');
+        } else if (roles.includes('ops') || roles.includes('operations')) {
+          navigate('/operations');
+        } else {
+          navigate('/');
+        }
+      }
     }
     
     // Load remembered username if available
@@ -40,7 +56,7 @@ export default function Login() {
         setRememberMe(true);
       }
     }
-  }, [isAuthenticated, user, navigate]);
+  }, [isAuthenticated, user, navigate, loading]);
 
   // Real-time validation - relaxed for RM usernames like "rm1"
   const validateField = (field: 'username' | 'password', value: string) => {
@@ -59,8 +75,8 @@ export default function Login() {
     if (field === 'password') {
       if (!value) {
         errors.password = 'Password is required';
-      } else if (value.length < 6) {
-        errors.password = 'Password must be at least 6 characters';
+      } else if (value.length < 2) {
+        errors.password = 'Password must be at least 2 characters';
       }
       // If valid, no error
     }
@@ -113,6 +129,9 @@ export default function Login() {
     } else {
       // JWT or other providers
       try {
+        // Mark that we're logging in to prevent useEffect from interfering
+        sessionStorage.setItem('los_just_logged_in', 'true');
+        
         await login(username, password);
         
         // Store remember me preference
@@ -124,31 +143,68 @@ export default function Login() {
           localStorage.removeItem('los_remembered_username');
         }
         
-        // After login, wait for user state to update, then redirect based on roles
-        setTimeout(async () => {
-          const currentUser = await authProvider.getUser();
-          if (currentUser?.roles && currentUser.roles.length > 0) {
-            // Redirect based on persona
-            if (currentUser.roles.includes('rm') || currentUser.roles.includes('relationship_manager')) {
-              navigate('/rm');
-            } else if (currentUser.roles.includes('admin')) {
-              navigate('/admin');
-            } else if (currentUser.roles.includes('ops') || currentUser.roles.includes('operations')) {
-              navigate('/operations');
-            } else {
-              navigate('/');
+        // Force refresh of user state and redirect immediately based on roles
+        await refreshUser();
+        
+        // Small delay to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        const currentUser = await authProvider.getUser();
+        console.log('Current user after login:', currentUser);
+        
+        let userToNavigate = currentUser;
+        if (!userToNavigate) {
+          console.log('No user from getUser(), checking localStorage...');
+          const userStr = localStorage.getItem('los_token_user');
+          if (userStr) {
+            try {
+              userToNavigate = JSON.parse(userStr);
+              console.log('Parsed user from storage:', userToNavigate);
+            } catch (e) {
+              console.error('Failed to parse user data:', e);
             }
-          } else {
-            navigate('/');
           }
-        }, 300);
+        }
+        
+        if (userToNavigate) {
+          const roles = userToNavigate.roles || [];
+          console.log('User roles:', roles);
+          console.log('Navigating based on roles...');
+          
+          // Clear the flag before navigating
+          sessionStorage.removeItem('los_just_logged_in');
+          
+          if (roles.includes('rm') || roles.includes('relationship_manager')) {
+            console.log('Navigating to /rm');
+            navigate('/rm', { replace: true });
+          } else if (roles.includes('admin')) {
+            console.log('Navigating to /admin');
+            navigate('/admin', { replace: true });
+          } else if (roles.includes('ops') || roles.includes('operations')) {
+            console.log('Navigating to /operations');
+            navigate('/operations', { replace: true });
+          } else {
+            console.log('Navigating to /');
+            navigate('/', { replace: true });
+          }
+        } else {
+          console.error('No user data available after login');
+          sessionStorage.removeItem('los_just_logged_in');
+          setError('Login succeeded but user data is missing. Please try again.');
+        }
       } catch (err: any) {
-        const errorMessage = err.message || 'Login failed. Please check your credentials.';
+        console.error('Login error caught in handleSubmit:', err);
+        const errorMessage = err?.message || err?.toString() || 'Login failed. Please check your credentials.';
+        console.error('Setting error message:', errorMessage);
         setError(errorMessage);
+        
+        // Clear field errors to ensure error message is visible
+        setFieldErrors({});
         
         // Parse specific error messages for better UX
         if (errorMessage.toLowerCase().includes('invalid credentials') || 
-            errorMessage.toLowerCase().includes('incorrect')) {
+            errorMessage.toLowerCase().includes('incorrect') ||
+            errorMessage.toLowerCase().includes('invalid username')) {
           setFieldErrors({
             username: ' ',
             password: 'Invalid username or password',
@@ -399,8 +455,8 @@ export default function Login() {
                   )}
                 </div>
 
-                {/* General Error Message */}
-                {error && !fieldErrors.username && !fieldErrors.password && (
+                {/* General Error Message - Always show if error exists */}
+                {error && (
                   <div 
                     className="flex items-start p-3 sm:p-4 rounded-lg 
                       bg-red-50 dark:bg-red-900/20 

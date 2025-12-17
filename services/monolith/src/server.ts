@@ -365,45 +365,50 @@ const ApplicantSchema = z.object({
 
 app.put('/api/applicants/:id', async (req, res) => {
   const parsed = ApplicantSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
-  const client = await connectSupabase(supabaseClient);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
+  }
+
+  if (!supabaseClient) {
+    return res.status(500).json({ error: 'Supabase client not initialized' });
+  }
+
   try {
-    await client.query(
-      `INSERT INTO applicants (applicant_id, first_name, last_name, date_of_birth, gender, marital_status, 
-       mobile, email, pan, address_line1, city, state, pincode, country, employment_type, monthly_income, 
-       employer_name, years_in_job)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-       ON CONFLICT (applicant_id) DO UPDATE SET
-         first_name = COALESCE(EXCLUDED.first_name, applicants.first_name),
-         last_name = COALESCE(EXCLUDED.last_name, applicants.last_name),
-         date_of_birth = COALESCE(EXCLUDED.date_of_birth, applicants.date_of_birth),
-         gender = COALESCE(EXCLUDED.gender, applicants.gender),
-         marital_status = COALESCE(EXCLUDED.marital_status, applicants.marital_status),
-         mobile = COALESCE(EXCLUDED.mobile, applicants.mobile),
-         email = COALESCE(EXCLUDED.email, applicants.email),
-         pan = COALESCE(EXCLUDED.pan, applicants.pan),
-         address_line1 = COALESCE(EXCLUDED.address_line1, applicants.address_line1),
-         city = COALESCE(EXCLUDED.city, applicants.city),
-         state = COALESCE(EXCLUDED.state, applicants.state),
-         pincode = COALESCE(EXCLUDED.pincode, applicants.pincode),
-         employment_type = COALESCE(EXCLUDED.employment_type, applicants.employment_type),
-         monthly_income = COALESCE(EXCLUDED.monthly_income, applicants.monthly_income),
-         employer_name = COALESCE(EXCLUDED.employer_name, applicants.employer_name),
-         years_in_job = COALESCE(EXCLUDED.years_in_job, applicants.years_in_job),
-         updated_at = now()`,
-      [req.params.id, parsed.data.firstName, parsed.data.lastName, parsed.data.dateOfBirth, parsed.data.gender,
-       parsed.data.maritalStatus, parsed.data.mobile, parsed.data.email, parsed.data.pan, parsed.data.addressLine1,
-       parsed.data.city, parsed.data.state, parsed.data.pincode, 'India', parsed.data.employmentType,
-       parsed.data.monthlyIncome, parsed.data.employerName, parsed.data.yearsInJob]
-    );
-    await client.commit();
+    const payload: any = {
+      applicant_id: req.params.id,
+      country: 'India',
+    };
+
+    if (parsed.data.firstName !== undefined) payload.first_name = parsed.data.firstName;
+    if (parsed.data.lastName !== undefined) payload.last_name = parsed.data.lastName;
+    if (parsed.data.dateOfBirth !== undefined) payload.date_of_birth = parsed.data.dateOfBirth;
+    if (parsed.data.gender !== undefined) payload.gender = parsed.data.gender;
+    if (parsed.data.maritalStatus !== undefined) payload.marital_status = parsed.data.maritalStatus;
+    if (parsed.data.mobile !== undefined) payload.mobile = parsed.data.mobile;
+    if (parsed.data.email !== undefined) payload.email = parsed.data.email;
+    if (parsed.data.pan !== undefined) payload.pan = parsed.data.pan;
+    if (parsed.data.addressLine1 !== undefined) payload.address_line1 = parsed.data.addressLine1;
+    if (parsed.data.city !== undefined) payload.city = parsed.data.city;
+    if (parsed.data.state !== undefined) payload.state = parsed.data.state;
+    if (parsed.data.pincode !== undefined) payload.pincode = parsed.data.pincode;
+    if (parsed.data.employmentType !== undefined) payload.employment_type = parsed.data.employmentType;
+    if (parsed.data.monthlyIncome !== undefined) payload.monthly_income = parsed.data.monthlyIncome;
+    if (parsed.data.employerName !== undefined) payload.employer_name = parsed.data.employerName;
+    if (parsed.data.yearsInJob !== undefined) payload.years_in_job = parsed.data.yearsInJob;
+
+    const { error } = await supabaseClient
+      .from('applicants')
+      .upsert(payload, { onConflict: 'applicant_id' });
+
+    if (error) {
+      logger.error('UpsertApplicantError', { error: error.message });
+      return res.status(500).json({ error: 'Failed to upsert applicant', details: error.message });
+    }
+
     return res.status(200).json({ applicantId: req.params.id, updated: true });
   } catch (err) {
-    await client.rollback();
     logger.error('UpsertApplicantError', { error: (err as Error).message });
     return res.status(500).json({ error: 'Failed to upsert applicant' });
-  } finally {
-    // Transaction handles cleanup automatically
   }
 });
 
@@ -868,66 +873,53 @@ app.put('/api/applications/:id', async (req: any, res: any) => {
     return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
   }
 
-  const client = await connectSupabase(supabaseClient);
-  
   try {
-    await client.query('BEGIN');
+    // Check application exists using Supabase SDK
+    const { data: appData, error: appError } = await supabaseClient
+      .from('applications')
+      .select('application_id, status')
+      .eq('application_id', req.params.id)
+      .maybeSingle();
     
-    // Check application exists
-    const { rows: appRows } = await client.query(
-      'SELECT application_id, status FROM applications WHERE application_id = $1',
-      [req.params.id]
-    );
-    if (appRows.length === 0) {
-      await client.query('ROLLBACK');
+    if (appError || !appData) {
       return res.status(404).json({ error: 'Application not found' });
     }
     
-    // Build update query dynamically
-    const updates: string[] = [];
-    const values: any[] = [];
-    let paramCount = 1;
+    // Build update payload for Supabase SDK
+    const updatePayload: any = {};
     
-    if (parsed.data.channel) {
-      updates.push(`channel = $${paramCount++}`);
-      values.push(parsed.data.channel);
-    }
-    if (parsed.data.productCode) {
-      updates.push(`product_code = $${paramCount++}`);
-      values.push(parsed.data.productCode);
-    }
-    if (parsed.data.requestedAmount) {
-      updates.push(`requested_amount = $${paramCount++}`);
-      values.push(parsed.data.requestedAmount);
-    }
-    if (parsed.data.requestedTenureMonths) {
-      updates.push(`requested_tenure_months = $${paramCount++}`);
-      values.push(parsed.data.requestedTenureMonths);
-    }
+    if (parsed.data.channel) updatePayload.channel = parsed.data.channel;
+    if (parsed.data.productCode) updatePayload.product_code = parsed.data.productCode;
+    if (parsed.data.requestedAmount) updatePayload.requested_amount = parsed.data.requestedAmount;
+    if (parsed.data.requestedTenureMonths) updatePayload.requested_tenure_months = parsed.data.requestedTenureMonths;
     
-    if (updates.length === 0) {
-      await client.query('ROLLBACK');
+    if (Object.keys(updatePayload).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
     
-    updates.push(`updated_at = now()`);
-    values.push(req.params.id);
+    // Always update updated_at timestamp
+    updatePayload.updated_at = new Date().toISOString();
     
-    await client.query(
-      `UPDATE applications SET ${updates.join(', ')} WHERE application_id = $${paramCount++}`,
-      values
-    );
-
-    await client.query('COMMIT');
+    // Update using Supabase SDK
+    const { error: updateError } = await supabaseClient
+      .from('applications')
+      .update(updatePayload)
+      .eq('application_id', req.params.id);
+    
+    if (updateError) {
+      logger.error('UpdateApplicationError', { 
+        error: updateError.message, 
+        correlationId: (req as any).correlationId,
+        applicationId: req.params.id
+      });
+      return res.status(500).json({ error: 'Failed to update application' });
+    }
     
     logger.info('UpdateApplication', { correlationId: (req as any).correlationId, applicationId: req.params.id });
     return res.status(200).json({ applicationId: req.params.id, updated: true });
   } catch (err) {
-    await client.rollback();
     logger.error('UpdateApplicationError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to update application' });
-  } finally {
-    // Transaction handles cleanup automatically
   }
 });
 
@@ -1101,17 +1093,18 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
   try {
     const applicationId = req.params.id;
     
-    // Get applicant_id from application
-    const { rows: appRows } = await querySupabase(supabaseClient, 
-      'SELECT applicant_id FROM applications WHERE application_id = $1',
-      [applicationId]
-    );
+    // Get applicant_id from application using Supabase SDK
+    const { data: appData, error: appError } = await supabaseClient
+      .from('applications')
+      .select('applicant_id')
+      .eq('application_id', applicationId)
+      .maybeSingle();
     
-    if (appRows.length === 0) {
+    if (appError || !appData) {
       return res.status(404).json({ error: 'Application not found' });
     }
     
-    const applicantId = appRows[0].applicant_id;
+    const applicantId = appData.applicant_id;
     
     // Parse request body - support partial updates
     const updateData: any = {};
@@ -1148,150 +1141,67 @@ app.put('/api/applications/:id/applicant', async (req: any, res: any) => {
       return res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
     }
     
-    const client = await connectSupabase(supabaseClient);
-    try {
-      await client.query('BEGIN');
-      
-      // Build dynamic UPDATE query
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramCount = 1;
-      
-      if (parsed.data.firstName !== undefined) {
-        updates.push(`first_name = $${paramCount++}`);
-        values.push(parsed.data.firstName);
-      }
-      if (parsed.data.lastName !== undefined) {
-        updates.push(`last_name = $${paramCount++}`);
-        values.push(parsed.data.lastName);
-      }
-      if (parsed.data.dateOfBirth !== undefined) {
-        updates.push(`date_of_birth = $${paramCount++}`);
-        values.push(parsed.data.dateOfBirth);
-      }
-      if (parsed.data.gender !== undefined) {
-        updates.push(`gender = $${paramCount++}`);
-        values.push(parsed.data.gender);
-      }
-      if (parsed.data.maritalStatus !== undefined) {
-        updates.push(`marital_status = $${paramCount++}`);
-        values.push(parsed.data.maritalStatus);
-      }
-      if (parsed.data.mobile !== undefined) {
-        updates.push(`mobile = $${paramCount++}`);
-        values.push(parsed.data.mobile);
-      }
-      if (parsed.data.email !== undefined) {
-        updates.push(`email = $${paramCount++}`);
-        values.push(parsed.data.email);
-      }
-      if (parsed.data.pan !== undefined) {
-        updates.push(`pan = $${paramCount++}`);
-        values.push(parsed.data.pan);
-      }
-      if (parsed.data.addressLine1 !== undefined) {
-        updates.push(`address_line1 = $${paramCount++}`);
-        values.push(parsed.data.addressLine1);
-      }
-      if (parsed.data.addressLine2 !== undefined) {
-        updates.push(`address_line2 = $${paramCount++}`);
-        values.push(parsed.data.addressLine2);
-      }
-      if (parsed.data.city !== undefined) {
-        updates.push(`city = $${paramCount++}`);
-        values.push(parsed.data.city);
-      }
-      if (parsed.data.state !== undefined) {
-        updates.push(`state = $${paramCount++}`);
-        values.push(parsed.data.state);
-      }
-      if (parsed.data.pincode !== undefined) {
-        updates.push(`pincode = $${paramCount++}`);
-        values.push(parsed.data.pincode);
-      }
-      if (parsed.data.employmentType !== undefined) {
-        updates.push(`employment_type = $${paramCount++}`);
-        values.push(parsed.data.employmentType);
-      }
-      if (parsed.data.monthlyIncome !== undefined) {
-        updates.push(`monthly_income = $${paramCount++}`);
-        values.push(parsed.data.monthlyIncome);
-      }
-      if (parsed.data.employerName !== undefined) {
-        updates.push(`employer_name = $${paramCount++}`);
-        values.push(parsed.data.employerName);
-      }
-      if (parsed.data.businessName !== undefined) {
-        updates.push(`business_name = $${paramCount++}`);
-        values.push(parsed.data.businessName);
-      }
-      if (parsed.data.yearsInJob !== undefined) {
-        updates.push(`years_in_job = $${paramCount++}`);
-        values.push(parsed.data.yearsInJob);
-      }
-      if (parsed.data.otherIncomeSources !== undefined) {
-        updates.push(`other_income_sources = $${paramCount++}`);
-        values.push(parsed.data.otherIncomeSources);
-      }
-      if (req.body.bankAccountNumber !== undefined) {
-        updates.push(`bank_account_number = $${paramCount++}`);
-        values.push(req.body.bankAccountNumber);
-      }
-      if (req.body.bankIfsc !== undefined) {
-        updates.push(`bank_ifsc = $${paramCount++}`);
-        values.push(req.body.bankIfsc);
-      }
-      if (req.body.accountHolderName !== undefined) {
-        updates.push(`bank_account_holder_name = $${paramCount++}`);
-        values.push(req.body.accountHolderName);
-      }
-      if (req.body.bankName !== undefined) {
-        updates.push(`bank_name = $${paramCount++}`);
-        values.push(req.body.bankName);
-      }
-      if (req.body.bankVerified !== undefined) {
-        updates.push(`bank_verified = $${paramCount++}`);
-        values.push(req.body.bankVerified);
-      }
-      if (req.body.bankVerificationMethod !== undefined) {
-        updates.push(`bank_verification_method = $${paramCount++}`);
-        values.push(req.body.bankVerificationMethod);
-      }
-      
-      if (updates.length === 0) {
-        await client.query('ROLLBACK');
+    // Build update payload for Supabase SDK (convert camelCase to snake_case)
+    const updatePayload: any = {};
+    
+    if (parsed.data.firstName !== undefined) updatePayload.first_name = parsed.data.firstName;
+    if (parsed.data.lastName !== undefined) updatePayload.last_name = parsed.data.lastName;
+    if (parsed.data.dateOfBirth !== undefined) updatePayload.date_of_birth = parsed.data.dateOfBirth;
+    if (parsed.data.gender !== undefined) updatePayload.gender = parsed.data.gender;
+    if (parsed.data.maritalStatus !== undefined) updatePayload.marital_status = parsed.data.maritalStatus;
+    if (parsed.data.mobile !== undefined) updatePayload.mobile = parsed.data.mobile;
+    if (parsed.data.email !== undefined) updatePayload.email = parsed.data.email;
+    if (parsed.data.pan !== undefined) updatePayload.pan = parsed.data.pan;
+    if (parsed.data.addressLine1 !== undefined) updatePayload.address_line1 = parsed.data.addressLine1;
+    if (parsed.data.addressLine2 !== undefined) updatePayload.address_line2 = parsed.data.addressLine2;
+    if (parsed.data.city !== undefined) updatePayload.city = parsed.data.city;
+    if (parsed.data.state !== undefined) updatePayload.state = parsed.data.state;
+    if (parsed.data.pincode !== undefined) updatePayload.pincode = parsed.data.pincode;
+    if (parsed.data.employmentType !== undefined) updatePayload.employment_type = parsed.data.employmentType;
+    if (parsed.data.monthlyIncome !== undefined) updatePayload.monthly_income = parsed.data.monthlyIncome;
+    if (parsed.data.employerName !== undefined) updatePayload.employer_name = parsed.data.employerName;
+    if (parsed.data.businessName !== undefined) updatePayload.business_name = parsed.data.businessName;
+    if (parsed.data.yearsInJob !== undefined) updatePayload.years_in_job = parsed.data.yearsInJob;
+      // Note: otherIncomeSources is not in ApplicantSchema, but we handle it from req.body
+      if (req.body.otherIncomeSources !== undefined) updatePayload.other_income_sources = req.body.otherIncomeSources;
+    if (req.body.bankAccountNumber !== undefined) updatePayload.bank_account_number = req.body.bankAccountNumber;
+    if (req.body.bankIfsc !== undefined) updatePayload.bank_ifsc = req.body.bankIfsc;
+    if (req.body.accountHolderName !== undefined) updatePayload.bank_account_holder_name = req.body.accountHolderName;
+    if (req.body.bankName !== undefined) updatePayload.bank_name = req.body.bankName;
+    if (req.body.bankVerified !== undefined) updatePayload.bank_verified = req.body.bankVerified;
+    if (req.body.bankVerificationMethod !== undefined) updatePayload.bank_verification_method = req.body.bankVerificationMethod;
+    
+    if (Object.keys(updatePayload).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
       }
       
-      updates.push(`updated_at = now()`);
-      values.push(applicantId);
-      
-      await client.query(
-        `UPDATE applicants SET ${updates.join(', ')} WHERE applicant_id = $${paramCount++}`,
-        values
-      );
-      
-      await client.query('COMMIT');
+    // Always update updated_at timestamp
+    updatePayload.updated_at = new Date().toISOString();
+    
+    // Update using Supabase SDK
+    const { error: updateError } = await supabaseClient
+      .from('applicants')
+      .update(updatePayload)
+      .eq('applicant_id', applicantId);
+    
+    if (updateError) {
+      logger.error('UpdateApplicantByApplicationError', {
+        error: updateError.message,
+        applicationId,
+        applicantId,
+        correlationId: (req as any).correlationId
+      });
+      return res.status(500).json({ error: 'Failed to update applicant' });
+    }
       
       logger.debug('UpdateApplicantByApplication', {
         applicationId,
         applicantId,
-        updatedFields: updates.length - 1,
+      updatedFields: Object.keys(updatePayload).length - 1, // Exclude updated_at
         correlationId: (req as any).correlationId
       });
       
       return res.status(200).json({ applicationId, applicantId, updated: true });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      logger.error('UpdateApplicantByApplicationError', {
-        error: (err as Error).message,
-        applicationId,
-        correlationId: (req as any).correlationId
-      });
-      return res.status(500).json({ error: 'Failed to update applicant' });
-    } finally {
-      // Transaction handles cleanup automatically
-    }
   } catch (err) {
     logger.error('UpdateApplicantByApplicationError', {
       error: (err as Error).message,
@@ -1476,12 +1386,9 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req: a
 
   const docId = uuidv4();
   const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-  const client = await connectSupabase(supabaseClient);
   
   try {
-    await client.query('BEGIN');
-    
-    // Extract OCR metadata (non-blocking, but await for transaction)
+    // Extract OCR metadata (non-blocking)
     let extractedData = null;
     let ocrProvider = null;
     let ocrConfidence = null;
@@ -1495,60 +1402,78 @@ app.post('/api/applications/:id/documents', upload.single('file'), async (req: a
       // Continue without OCR data
     }
     
-    // Check if this is a re-upload (delete existing if same type)
-    const existingDoc = await client.query(
-      'SELECT doc_id FROM documents WHERE application_id = $1 AND doc_type = $2 LIMIT 1',
-      [req.params.id, docType]
-    );
+    // Check if this is a re-upload (delete existing if same type) using Supabase SDK
+    const { data: existingDocs } = await supabaseClient
+      .from('documents')
+      .select('doc_id')
+      .eq('application_id', req.params.id)
+      .eq('doc_type', docType)
+      .limit(1);
     
     // If document of same type exists, delete it (simple versioning - keep only latest)
-    if (existingDoc.rows.length > 0) {
-      await client.query(
-        'DELETE FROM documents WHERE application_id = $1 AND doc_type = $2',
-        [req.params.id, docType]
-      );
+    if (existingDocs && existingDocs.length > 0) {
+      await supabaseClient
+        .from('documents')
+        .delete()
+        .eq('application_id', req.params.id)
+        .eq('doc_type', docType);
     }
     
-    // Persist document metadata (only columns that exist in schema)
-    await client.query(
-      'INSERT INTO documents (doc_id, application_id, doc_type, file_name, file_type, size_bytes, hash, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [docId, req.params.id, docType, req.file.originalname, req.file.mimetype, req.file.size, fileHash, 'Uploaded']
-    );
-
-    // Upload to MinIO (outside transaction but awaited before event)
+    // Upload to MinIO first (before persisting metadata)
     // If MinIO/S3 is not available, continue without object storage (for development)
     const objectKey = `${req.params.id}/${docId}/${req.file.originalname}`;
+    let objectKeyFinal = null;
     try {
       await putObjectBuffer(s3, { bucket, key: objectKey, body: req.file.buffer, contentType: req.file.mimetype });
-      // Store object key only if upload succeeded
-      await client.query('UPDATE documents SET object_key = $1 WHERE doc_id = $2', [objectKey, docId]);
-    } catch (s3Err: any) {
-      logger.warn('MinIOUploadFailed', { 
-        error: (s3Err as Error).message, 
-        docId, 
-        applicationId: req.params.id,
-        correlationId: (req as any).correlationId 
+      objectKeyFinal = objectKey;
+    } catch (s3Err) {
+      logger.warn('S3UploadFailed', { error: (s3Err as Error).message, docId, objectKey });
+      // Continue without object storage
+    }
+    
+    // Persist document metadata using Supabase SDK
+    const { error: insertError } = await supabaseClient
+      .from('documents')
+      .insert({
+        doc_id: docId,
+        application_id: req.params.id,
+        doc_type: docType,
+        file_name: req.file.originalname,
+        file_type: req.file.mimetype,
+        size_bytes: req.file.size,
+        hash: fileHash,
+        status: 'Uploaded',
+        object_key: objectKeyFinal
       });
-      // Continue without object storage - metadata is still in database
-      // In production, this should fail or retry, but for development we continue
+    
+    if (insertError) {
+      logger.error('InsertDocumentError', { error: insertError.message, docId, correlationId: (req as any).correlationId });
+      return res.status(500).json({ error: 'Failed to save document metadata' });
     }
 
-    // Write outbox event
+    // Write outbox event using Supabase SDK
     const eventId = uuidv4();
-    await client.query(
-      'INSERT INTO outbox (id, aggregate_id, topic, event_type, payload, headers) VALUES ($1, $2, $3, $4, $5, $6)',
-      [eventId, req.params.id, 'los.document.DocumentUploaded.v1', 'los.document.DocumentUploaded.v1', JSON.stringify({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey }), JSON.stringify({ correlationId: (req as any).correlationId })]
-    );
+    try {
+      await supabaseClient
+        .from('outbox')
+        .insert({
+          id: eventId,
+          aggregate_id: req.params.id,
+          topic: 'los.document.DocumentUploaded.v1',
+          event_type: 'los.document.DocumentUploaded.v1',
+          payload: JSON.stringify({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname, sizeBytes: req.file.size, objectKey: objectKeyFinal }),
+          headers: JSON.stringify({ correlationId: (req as any).correlationId })
+        });
+    } catch (outboxErr) {
+      logger.warn('OutboxWriteFailed', { error: (outboxErr as Error).message, docId });
+      // Non-blocking - continue
+    }
 
-    await client.query('COMMIT');
     logger.info('DocumentUploaded', { correlationId: (req as any).correlationId, applicationId: req.params.id, docId, docType });
     return res.status(201).json({ applicationId: req.params.id, docId, docType, fileName: req.file.originalname });
   } catch (err) {
-    await client.rollback();
     logger.error('DocumentUploadError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to upload document' });
-  } finally {
-    // Transaction handles cleanup automatically
   }
 });
 
@@ -1641,40 +1566,56 @@ app.patch('/api/documents/:docId/verify', async (req: any, res: any) => {
   const parsed = VerifySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid payload' });
 
-  const client = await connectSupabase(supabaseClient);
-  
   try {
-    await client.query('BEGIN');
+    // Check document exists and get application_id using Supabase SDK
+    const { data: docData, error: docError } = await supabaseClient
+      .from('documents')
+      .select('application_id, status')
+      .eq('doc_id', req.params.docId)
+      .maybeSingle();
     
-    // Check document exists and get application_id
-    const { rows } = await client.query('SELECT application_id, status FROM documents WHERE doc_id = $1', [req.params.docId]);
-    if (rows.length === 0) {
-      await client.query('ROLLBACK');
+    if (docError || !docData) {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    // Update status
-    await client.query(
-      'UPDATE documents SET status = $1 WHERE doc_id = $2',
-      ['Verified', req.params.docId]
-    );
+    // Update status using Supabase SDK
+    const { error: updateError } = await supabaseClient
+      .from('documents')
+      .update({ status: 'Verified' })
+      .eq('doc_id', req.params.docId);
+    
+    if (updateError) {
+      logger.error('DocumentVerifyError', { 
+        error: updateError.message, 
+        correlationId: (req as any).correlationId,
+        docId: req.params.docId
+      });
+      return res.status(500).json({ error: 'Failed to verify document' });
+    }
 
-    // Write outbox event
+    // Write outbox event using Supabase SDK
     const eventId = uuidv4();
-    await client.query(
-      'INSERT INTO outbox (id, aggregate_id, topic, event_type, payload, headers) VALUES ($1, $2, $3, $4, $5, $6)',
-      [eventId, rows[0].application_id, 'los.document.DocumentVerified.v1', 'los.document.DocumentVerified.v1', JSON.stringify({ docId: req.params.docId, remarks: parsed.data.remarks }), JSON.stringify({ correlationId: (req as any).correlationId })]
-    );
+    try {
+      await supabaseClient
+        .from('outbox')
+        .insert({
+          id: eventId,
+          aggregate_id: docData.application_id,
+          topic: 'los.document.DocumentVerified.v1',
+          event_type: 'los.document.DocumentVerified.v1',
+          payload: JSON.stringify({ docId: req.params.docId, remarks: parsed.data.remarks }),
+          headers: JSON.stringify({ correlationId: (req as any).correlationId })
+        });
+    } catch (outboxErr) {
+      logger.warn('OutboxWriteFailed', { error: (outboxErr as Error).message, docId: req.params.docId });
+      // Non-blocking - continue
+    }
 
-    await client.query('COMMIT');
     logger.info('DocumentVerified', { correlationId: (req as any).correlationId, docId: req.params.docId });
     return res.status(200).json({ docId: req.params.docId, status: 'Verified', verified: true });
   } catch (err) {
-    await client.rollback();
     logger.error('DocumentVerifyError', { error: (err as Error).message, correlationId: (req as any).correlationId });
     return res.status(500).json({ error: 'Failed to verify document' });
-  } finally {
-    // Transaction handles cleanup automatically
   }
 });
 
@@ -1843,17 +1784,19 @@ app.get('*', (req, res) => {
 // Only start server if this file is run directly (not imported for tests)
 if (require.main === module) {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const host = process.env.HOST || '0.0.0.0';
   
   console.log('🚀 Starting LOS Monolith Service...');
   console.log('📋 Environment check:');
   console.log(`   PORT: ${port}`);
+  console.log(`   HOST: ${host}`);
   console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? 'SET ✅' : 'NOT SET ❌'}`);
   console.log(`   SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET ✅' : 'NOT SET ❌'}`);
   
-  app.listen(port, '0.0.0.0', () => {
+  app.listen(port, host, () => {
     logger.info('MonolithServiceStarted', { port });
     console.log(`✅ LOS Monolith Service started successfully on port ${port}`);
-    console.log(`   Health endpoint: http://0.0.0.0:${port}/health`);
+    console.log(`   Health endpoint: http://${host}:${port}/health`);
   });
 }

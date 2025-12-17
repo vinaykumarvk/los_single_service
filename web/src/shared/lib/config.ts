@@ -57,12 +57,15 @@ export function getConfig(): AppConfig {
   const runtimeConfig = typeof window !== 'undefined' ? window.__LOS_CONFIG__ : undefined;
 
   // API Configuration
+  // In production (when served from same origin), use relative URLs
+  // In development, use Vite proxy or explicit URLs
+  const isProduction = import.meta.env.PROD;
   const apiConfig: APIConfig = {
     baseURL:
       runtimeConfig?.api?.baseURL ||
       import.meta.env.VITE_API_BASE_URL ||
       import.meta.env.VITE_API_GATEWAY ||
-      'http://localhost:3000',
+      (isProduction ? '' : 'http://localhost:3000'), // Empty string = relative URL (same origin)
     apiVersion: runtimeConfig?.api?.apiVersion || import.meta.env.VITE_API_VERSION || 'v1',
     timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000', 10),
     headers: {

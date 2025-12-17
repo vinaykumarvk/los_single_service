@@ -22,173 +22,84 @@ export function setupRMDashboardEndpoint(app: any, pool: any, supabaseClient: Su
         return res.status(401).json({ error: 'Unauthorized. User ID required.' });
       }
 
-      // Calculate statistics for applications assigned to this RM
-      // Use Supabase SDK or pool
-      let statsRow: any;
+      // Calculate statistics and metrics for applications assigned to this RM
+      // Use Supabase SDK REST API (HTTP) instead of direct PostgreSQL to avoid Docker networking issues
+      logger.debug('RMDashboardStatsQuery', { userId, method: 'Supabase SDK REST API' });
       
-      if (supabaseClient) {
-        // Use Supabase SDK - get counts for each status
-        try {
-          const [draft, submitted, inProgress, approved, rejected, total] = await Promise.all([
-            supabaseClient.from('applications').select('*', { count: 'exact', head: true }).eq('assigned_to', userId).eq('status', 'Draft'),
-            supabaseClient.from('applications').select('*', { count: 'exact', head: true }).eq('assigned_to', userId).eq('status', 'Submitted'),
-            supabaseClient.from('applications').select('*', { count: 'exact', head: true }).eq('assigned_to', userId).in('status', ['PendingVerification', 'UnderReview', 'InProgress']),
-            supabaseClient.from('applications').select('*', { count: 'exact', head: true }).eq('assigned_to', userId).eq('status', 'Approved'),
-            supabaseClient.from('applications').select('*', { count: 'exact', head: true }).eq('assigned_to', userId).eq('status', 'Rejected'),
-            supabaseClient.from('applications').select('*', { count: 'exact', head: true }).eq('assigned_to', userId),
-          ]);
-          
-          statsRow = {
-            draft_count: draft.count || 0,
-            submitted_count: submitted.count || 0,
-            in_progress_count: inProgress.count || 0,
-            approved_count: approved.count || 0,
-            rejected_count: rejected.count || 0,
-            total_count: total.count || 0,
-          };
-        } catch (sdkError: any) {
-          logger.error('RMDashboardSDKError', { error: sdkError.message, userId });
-          // Fallback to pool if SDK fails
-          const statsQuery = `
-            SELECT 
-              COUNT(*) FILTER (WHERE status = 'Draft') as draft_count,
-              COUNT(*) FILTER (WHERE status = 'Submitted') as submitted_count,
-              COUNT(*) FILTER (WHERE status IN ('PendingVerification', 'UnderReview', 'InProgress')) as in_progress_count,
-              COUNT(*) FILTER (WHERE status = 'Approved') as approved_count,
-              COUNT(*) FILTER (WHERE status = 'Rejected') as rejected_count,
-              COUNT(*) as total_count
-            FROM applications
-            WHERE assigned_to = $1
-          `;
-          const statsResult = await querySupabase(supabaseClient, statsQuery, [userId]);
-          statsRow = statsResult.rows[0];
+      let statsRow: any;
+      let totalAmount = 0;
+      let avgAmount = 0;
+      let totalSubmitted = 0;
+      let totalApproved = 0;
+      let totalRejected = 0;
+      let totalDisbursed = 0;
+
+      try {
+        // Single fetch for all applications for this RM
+        const { data: allApps, error: fetchError } = await supabaseClient
+          .from('applications')
+          .select('status, requested_amount')
+          .eq('assigned_to', userId);
+        
+        if (fetchError) {
+          logger.error('RMDashboardFetchError', { error: fetchError.message, userId });
+          throw fetchError;
         }
-      } else {
-        throw new Error('Supabase client is required');
+        
+        const apps = allApps || [];
+
+        // Basic status counts
+        statsRow = {
+          draft_count: apps.filter((a: any) => a.status === 'Draft').length,
+          submitted_count: apps.filter((a: any) => a.status === 'Submitted').length,
+          in_progress_count: apps.filter((a: any) => 
+            ['PendingVerification', 'UnderReview', 'InProgress'].includes(a.status)
+          ).length,
+          approved_count: apps.filter((a: any) => a.status === 'Approved').length,
+          rejected_count: apps.filter((a: any) => a.status === 'Rejected').length,
+          total_count: apps.length
+        };
+
+        // Amount metrics (exclude rejected/withdrawn)
+        const validApps = apps.filter((a: any) => 
+          a.requested_amount && !['Rejected', 'Withdrawn'].includes(a.status)
+        );
+        totalAmount = validApps.reduce(
+          (sum: number, a: any) => sum + (parseFloat(a.requested_amount) || 0),
+          0
+        );
+        avgAmount = validApps.length > 0 ? totalAmount / validApps.length : 0;
+
+        // Conversion metrics from same data
+        totalSubmitted = apps.filter((a: any) => a.status === 'Submitted').length;
+        totalApproved = apps.filter((a: any) => a.status === 'Approved').length;
+        totalRejected = apps.filter((a: any) => a.status === 'Rejected').length;
+        totalDisbursed = apps.filter((a: any) => a.status === 'Disbursed').length;
+      } catch (queryError: any) {
+        logger.error('RMDashboardStatsQueryError', { error: queryError.message, stack: queryError.stack, userId });
+        throw queryError;
       }
 
       // Get recent applications (last 10, ordered by creation date)
-      let recentRows: any[];
+      // Use Supabase SDK REST API (HTTP) instead of direct PostgreSQL
+      const { data: recentApps, error: recentError } = await supabaseClient
+        .from('applications')
+        .select('application_id, applicant_id, status, requested_amount, product_code, channel, created_at, updated_at')
+        .eq('assigned_to', userId)
+        .order('created_at', { ascending: false })
+        .limit(10);
       
-      if (supabaseClient) {
-        try {
-          const { data, error } = await supabaseClient
-            .from('applications')
-            .select('application_id, applicant_id, status, requested_amount, product_code, channel, created_at, updated_at')
-            .eq('assigned_to', userId)
-            .order('created_at', { ascending: false })
-            .limit(10);
-          
-          if (error) throw error;
-          recentRows = data || [];
-        } catch (sdkError: any) {
-          logger.error('RMDashboardRecentSDKError', { error: sdkError.message, userId });
-          // Fallback to pool
-          const recentQuery = `
-            SELECT 
-              application_id,
-              applicant_id,
-              status,
-              requested_amount,
-              product_code,
-              channel,
-              created_at,
-              updated_at
-            FROM applications
-            WHERE assigned_to = $1
-            ORDER BY created_at DESC
-            LIMIT 10
-          `;
-          const recentResult = await querySupabase(supabaseClient, recentQuery, [userId]);
-          recentRows = recentResult.rows;
-        }
-      } else {
-        throw new Error('Supabase client is required');
+      if (recentError) {
+        logger.error('RMDashboardRecentError', { error: recentError.message, userId });
+        throw recentError;
       }
-
-      // Calculate total loan amount and conversion metrics
-      let amountRow: any;
-      let conversionRow: any;
       
-      if (supabaseClient) {
-        try {
-          // Get applications for calculations
-          const { data: apps, error: appsError } = await supabaseClient
-            .from('applications')
-            .select('requested_amount, status')
-            .eq('assigned_to', userId);
-          
-          if (appsError) throw appsError;
-          
-          const activeApps = (apps || []).filter(a => !['Rejected', 'Withdrawn'].includes(a.status));
-          const totalAmount = activeApps.reduce((sum, a) => sum + parseFloat(a.requested_amount || 0), 0);
-          const avgAmount = activeApps.length > 0 ? totalAmount / activeApps.length : 0;
-          
-          amountRow = {
-            total_amount: totalAmount,
-            avg_amount: avgAmount,
-          };
-          
-          const allApps = apps || [];
-          conversionRow = {
-            disbursed_count: allApps.filter(a => a.status === 'Disbursed').length,
-            approved_count: allApps.filter(a => a.status === 'Approved').length,
-            rejected_count: allApps.filter(a => a.status === 'Rejected').length,
-            submitted_count: allApps.filter(a => a.status === 'Submitted').length,
-          };
-        } catch (sdkError: any) {
-          logger.error('RMDashboardAmountSDKError', { error: sdkError.message, userId });
-          // Fallback to pool
-          const amountQuery = `
-            SELECT 
-              COALESCE(SUM(requested_amount), 0) as total_amount,
-              COALESCE(AVG(requested_amount), 0) as avg_amount
-            FROM applications
-            WHERE assigned_to = $1 AND status NOT IN ('Rejected', 'Withdrawn')
-          `;
-          const amountResult = await querySupabase(supabaseClient, amountQuery, [userId]);
-          amountRow = amountResult.rows[0];
+      const recentRows = recentApps || [];
 
-          const conversionQuery = `
-            SELECT 
-              COUNT(*) FILTER (WHERE status = 'Disbursed') as disbursed_count,
-              COUNT(*) FILTER (WHERE status = 'Approved') as approved_count,
-              COUNT(*) FILTER (WHERE status = 'Rejected') as rejected_count,
-              COUNT(*) FILTER (WHERE status = 'Submitted') as submitted_count
-            FROM applications
-            WHERE assigned_to = $1
-          `;
-          const conversionResult = await querySupabase(supabaseClient, conversionQuery, [userId]);
-          conversionRow = conversionResult.rows[0];
-        }
-      } else {
-        const amountQuery = `
-          SELECT 
-            COALESCE(SUM(requested_amount), 0) as total_amount,
-            COALESCE(AVG(requested_amount), 0) as avg_amount
-          FROM applications
-          WHERE assigned_to = $1 AND status NOT IN ('Rejected', 'Withdrawn')
-        `;
-        const amountResult = await querySupabase(supabaseClient, amountQuery, [userId]);
-        amountRow = amountResult.rows[0];
-
-        const conversionQuery = `
-          SELECT 
-            COUNT(*) FILTER (WHERE status = 'Disbursed') as disbursed_count,
-            COUNT(*) FILTER (WHERE status = 'Approved') as approved_count,
-            COUNT(*) FILTER (WHERE status = 'Rejected') as rejected_count,
-            COUNT(*) FILTER (WHERE status = 'Submitted') as submitted_count
-          FROM applications
-          WHERE assigned_to = $1
-        `;
-        const conversionResult = await querySupabase(supabaseClient, conversionQuery, [userId]);
-        conversionRow = conversionResult.rows[0];
-      }
-
-      const totalSubmitted = parseInt(conversionRow.submitted_count || 0, 10);
-      const totalApproved = parseInt(conversionRow.approved_count || 0, 10);
-      const totalRejected = parseInt(conversionRow.rejected_count || 0, 10);
-      const totalDisbursed = parseInt(conversionRow.disbursed_count || 0, 10);
+      const amountRow = {
+        total_amount: totalAmount,
+        avg_amount: avgAmount
+      };
       
       const approvalRate = totalSubmitted > 0 ? ((totalApproved / totalSubmitted) * 100).toFixed(1) : '0.0';
       const rejectionRate = totalSubmitted > 0 ? ((totalRejected / totalSubmitted) * 100).toFixed(1) : '0.0';
