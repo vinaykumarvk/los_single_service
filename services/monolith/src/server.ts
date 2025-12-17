@@ -244,7 +244,26 @@ app.post('/api/auth/login', async (req, res) => {
       'ops1': { id: 'b0000003-0000-0000-0000-000000000001', roles: ['ops', 'operations'], email: 'ops1@los.local' },
     };
     
-    const testUser = testUsers[username] || testUsers['rm1'];
+    let testUser = testUsers[username] || testUsers['rm1'];
+    // If the database is reachable, prefer the real user_id/roles so demo data matches.
+    try {
+      if (supabaseClient) {
+        const { data, error } = await supabaseClient
+          .from('users')
+          .select('user_id, username, email, roles')
+          .eq('username', username)
+          .maybeSingle();
+        if (!error && data?.user_id) {
+          testUser = {
+            id: data.user_id,
+            roles: data.roles || testUser.roles,
+            email: data.email || testUser.email,
+          };
+        }
+      }
+    } catch (err) {
+      logger.warn('TestLoginUserLookupFailed', { username, error: (err as Error).message });
+    }
     const accessToken = jwt.sign(
       { sub: testUser.id, username, email: testUser.email, roles: testUser.roles },
       JWT_SECRET,
