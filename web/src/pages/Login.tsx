@@ -75,8 +75,6 @@ export default function Login() {
     if (field === 'password') {
       if (!value) {
         errors.password = 'Password is required';
-      } else if (value.length < 2) {
-        errors.password = 'Password must be at least 2 characters';
       }
       // If valid, no error
     }
@@ -451,7 +449,7 @@ export default function Login() {
                   
                   {/* Password Strength Indicator (only show when typing, not on error) */}
                   {password && !fieldErrors.password && (
-                    <PasswordStrength password={password} showStrength={true} />
+                    <PasswordStrength password={password} showStrength={false} />
                   )}
                 </div>
 
