@@ -45,6 +45,7 @@ COPY --from=builder /app/web/dist ./services/web-dist
 
 WORKDIR /app/services/monolith
 
+# Server listens on PORT env var (default 3000)
 EXPOSE 3000
 
 CMD ["node", "dist/server.js"]
