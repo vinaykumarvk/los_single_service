@@ -3,9 +3,9 @@
  * Provides offline support and caching
  */
 
-const CACHE_NAME = 'los-v1';
-const STATIC_CACHE = 'los-static-v1';
-const DYNAMIC_CACHE = 'los-dynamic-v1';
+const CACHE_NAME = 'los-v2';
+const STATIC_CACHE = 'los-static-v2';
+const DYNAMIC_CACHE = 'los-dynamic-v2';
 
 // Assets to cache on install
 const STATIC_ASSETS = [
@@ -132,4 +132,3 @@ async function syncApplications() {
   // This would sync any offline-created applications when back online
   console.log('Syncing offline applications...');
 }
-
