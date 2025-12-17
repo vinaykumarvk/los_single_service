@@ -33,12 +33,24 @@ WORKDIR /app
 
 # Copy workspace files for runtime
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY shared/ ./shared/
+COPY --from=builder /app/shared/ ./shared/
 COPY services/monolith/ ./services/monolith/
 
 # Install production dependencies only
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 RUN pnpm install --frozen-lockfile --prod
+
+# Ensure @los/shared-libs has built JS available in node_modules at runtime
+RUN test -f /app/shared/libs/dist/index.js \
+  && if [ ! -e /app/services/monolith/node_modules/@los/shared-libs ]; then \
+       mkdir -p /app/services/monolith/node_modules/@los/shared-libs; \
+     fi \
+  && cp -R /app/shared/libs/dist /app/services/monolith/node_modules/@los/shared-libs/ \
+  && cp /app/shared/libs/package.json /app/services/monolith/node_modules/@los/shared-libs/package.json \
+  && if [ -e /app/node_modules/@los/shared-libs ]; then \
+       cp -R /app/shared/libs/dist /app/node_modules/@los/shared-libs/; \
+       cp /app/shared/libs/package.json /app/node_modules/@los/shared-libs/package.json; \
+     fi
 
 # Copy built files
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
@@ -50,4 +62,3 @@ WORKDIR /app/services/monolith
 EXPOSE 3000
 
 CMD ["node", "dist/server.js"]
-
