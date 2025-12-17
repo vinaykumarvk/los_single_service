@@ -49,6 +49,18 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
 
+# Ensure @los/shared-libs has built JS available in node_modules at runtime
+RUN test -f /app/shared/libs/dist/index.js \
+  && if [ ! -e /app/services/monolith/node_modules/@los/shared-libs ]; then \
+       mkdir -p /app/services/monolith/node_modules/@los/shared-libs; \
+     fi \
+  && cp -R /app/shared/libs/dist /app/services/monolith/node_modules/@los/shared-libs/ \
+  && cp /app/shared/libs/package.json /app/services/monolith/node_modules/@los/shared-libs/package.json \
+  && if [ -e /app/node_modules/@los/shared-libs ]; then \
+       cp -R /app/shared/libs/dist /app/node_modules/@los/shared-libs/; \
+       cp /app/shared/libs/package.json /app/node_modules/@los/shared-libs/package.json; \
+     fi
+
 # Copy built monolith files
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
 
