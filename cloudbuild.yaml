@@ -19,6 +19,7 @@ steps:
     waitFor: ['build']
 
   # Deploy to Cloud Run
+  # Note: Cloud Run sets PORT=8080 by default, our app reads process.env.PORT
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
     entrypoint: gcloud
     args:
@@ -28,7 +29,6 @@ steps:
       - '--image=${_IMAGE_URL}'
       - '--region=${_REGION}'
       - '--platform=managed'
-      - '--port=3000'
       - '--memory=2Gi'
       - '--cpu=2'
       - '--max-instances=10'
@@ -36,7 +36,7 @@ steps:
       - '--timeout=300'
       - '--startup-cpu-boost'
       - '--allow-unauthenticated'
-      - '--set-env-vars=NODE_ENV=production,PORT=3000'
+      - '--set-env-vars=NODE_ENV=production'
       - '--set-secrets=DATABASE_URL=database-url:latest,SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest'
     id: 'deploy'
     waitFor: ['push']
