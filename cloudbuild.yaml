@@ -42,7 +42,7 @@ steps:
     waitFor: ['push']
 
 substitutions:
-  _SERVICE_NAME: 'los-monolith'
+  _SERVICE_NAME: 'los-single-service'
   _REGION: 'us-central1'
   _IMAGE_URL: '${_REGION}-docker.pkg.dev/${PROJECT_ID}/los-images/monolith:${SHORT_SHA}'
 
