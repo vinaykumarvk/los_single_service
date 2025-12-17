@@ -42,14 +42,25 @@ RUN pnpm install --frozen-lockfile --prod
 
 # Ensure @los/shared-libs has built JS available in node_modules at runtime
 RUN test -f /app/shared/libs/dist/index.js \
-  && if [ ! -e /app/services/monolith/node_modules/@los/shared-libs ]; then \
+  && if [ -e /app/services/monolith/node_modules/@los/shared-libs ]; then \
+       src="$(readlink -f /app/shared/libs)"; \
+       dst="$(readlink -f /app/services/monolith/node_modules/@los/shared-libs)"; \
+       if [ "$src" != "$dst" ]; then \
+         cp -R /app/shared/libs/dist /app/services/monolith/node_modules/@los/shared-libs/; \
+         cp /app/shared/libs/package.json /app/services/monolith/node_modules/@los/shared-libs/package.json; \
+       fi; \
+     else \
        mkdir -p /app/services/monolith/node_modules/@los/shared-libs; \
+       cp -R /app/shared/libs/dist /app/services/monolith/node_modules/@los/shared-libs/; \
+       cp /app/shared/libs/package.json /app/services/monolith/node_modules/@los/shared-libs/package.json; \
      fi \
-  && cp -R /app/shared/libs/dist /app/services/monolith/node_modules/@los/shared-libs/ \
-  && cp /app/shared/libs/package.json /app/services/monolith/node_modules/@los/shared-libs/package.json \
   && if [ -e /app/node_modules/@los/shared-libs ]; then \
-       cp -R /app/shared/libs/dist /app/node_modules/@los/shared-libs/; \
-       cp /app/shared/libs/package.json /app/node_modules/@los/shared-libs/package.json; \
+       src="$(readlink -f /app/shared/libs)"; \
+       dst="$(readlink -f /app/node_modules/@los/shared-libs)"; \
+       if [ "$src" != "$dst" ]; then \
+         cp -R /app/shared/libs/dist /app/node_modules/@los/shared-libs/; \
+         cp /app/shared/libs/package.json /app/node_modules/@los/shared-libs/package.json; \
+       fi; \
      fi
 
 # Copy built files
