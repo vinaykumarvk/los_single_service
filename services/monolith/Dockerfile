@@ -1,15 +1,21 @@
+# Stage 1: Build
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy workspace files
+# Copy root workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
-COPY shared/ ./shared/
-COPY services/monolith/ ./services/monolith/
-COPY web/ ./web/
 
-# Install pnpm and dependencies
+# Copy shared libs (monolith dependency)
+COPY shared/libs/ ./shared/libs/
+
+# Copy monolith service
+COPY services/monolith/ ./services/monolith/
+
+# Install pnpm
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+# Install ALL dependencies (including dev for building)
 RUN pnpm install --frozen-lockfile
 
 # Build shared libs first (required by monolith)
@@ -20,33 +26,40 @@ RUN pnpm build
 WORKDIR /app/services/monolith
 RUN pnpm build
 
-# Build frontend web app
-WORKDIR /app/web
-RUN pnpm build
+# Verify build output exists
+RUN ls -la dist/ && test -f dist/server.js
 
-# Production image
-FROM node:20-alpine
+# Stage 2: Production
+FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Copy workspace files for runtime
+# Copy root workspace files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY shared/ ./shared/
-COPY services/monolith/ ./services/monolith/
+
+# Copy shared libs (including built dist)
+COPY --from=builder /app/shared/libs/ ./shared/libs/
+
+# Copy monolith package.json for dependency installation
+COPY services/monolith/package.json ./services/monolith/
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 # Install production dependencies only
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy built files
+# Copy built monolith files
 COPY --from=builder /app/services/monolith/dist ./services/monolith/dist
-# Copy built frontend to web-dist (where server.ts expects it)
-COPY --from=builder /app/web/dist ./services/web-dist
 
 WORKDIR /app/services/monolith
 
-# Cloud Run sets PORT env var (default 8080), server reads from process.env.PORT
+# Cloud Run sets PORT env var (defaults to 8080)
+# Our app reads process.env.PORT
 EXPOSE 8080
 
-CMD ["node", "dist/server.js"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 8080) + '/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
+CMD ["node", "dist/server.js"]

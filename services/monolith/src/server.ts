@@ -44,6 +44,13 @@ try {
 export { supabaseClient };
 const logger = createLogger('monolith'); // Consolidated monolithic service
 
+// JWT Configuration - MUST be defined before middleware that uses it
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production-secret-key-min-32-chars';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'change-me-in-production-refresh-secret-key-min-32-chars';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
+
 export const app = express();
 
 // CORS configuration
@@ -174,11 +181,7 @@ async function ensureUsersTable() {
 }
 ensureUsersTable();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production-secret-key-min-32-chars';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'change-me-in-production-refresh-secret-key-min-32-chars';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MINUTES = 15;
+// JWT constants are defined earlier (before middleware)
 
 async function checkLoginLockout(username: string) {
   const { rows } = await querySupabase(
@@ -759,13 +762,13 @@ app.get('/api/applications', async (req, res) => {
       rows = data || [];
       total = count || 0;
     } else {
-      // Use pool for local PostgreSQL
+      // Fallback: Use raw SQL via querySupabase
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       
       // Get total count
       const countQuery = `SELECT COUNT(*) as total FROM applications ${whereClause}`;
-      const countResult = await pool!.query(countQuery, values);
-      total = parseInt(countResult.rows[0].total, 10);
+      const countResult = await querySupabase(supabaseClient, countQuery, values);
+      total = parseInt(countResult.rows[0]?.total || '0', 10);
 
       // Get paginated results
       values.push(limit, offset);
@@ -779,7 +782,7 @@ app.get('/api/applications', async (req, res) => {
         ORDER BY created_at DESC
         LIMIT $${paramCount++} OFFSET $${paramCount++}
       `;
-      const result = await pool!.query(dataQuery, values);
+      const result = await querySupabase(supabaseClient, dataQuery, values);
       rows = result.rows;
     }
 

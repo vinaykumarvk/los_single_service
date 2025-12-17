@@ -6,7 +6,7 @@
   "workspaces": [
     "gateway",
     "services/*",
-    "shared",
+    "shared/libs",
     "web",
     "infra",
     "reporting"
